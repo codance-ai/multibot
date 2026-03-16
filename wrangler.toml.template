@@ -1,0 +1,72 @@
+name = "multibot"
+main = "src/index.ts"
+compatibility_date = "2026-02-23"
+compatibility_flags = ["nodejs_compat"]
+
+# Durable Objects
+[[durable_objects.bindings]]
+name = "MULTIBOT_AGENT"
+class_name = "MultibotAgent"
+
+[[durable_objects.bindings]]
+name = "DISCORD_GATEWAY"
+class_name = "DiscordGateway"
+
+[[durable_objects.bindings]]
+name = "CHAT_COORDINATOR"
+class_name = "ChatCoordinator"
+
+[[migrations]]
+tag = "v1"
+new_sqlite_classes = ["MultibotAgent", "DiscordGateway", "ChatCoordinator"]
+
+[[d1_databases]]
+binding = "D1_DB"
+database_name = "multibot-db"
+database_id = "__D1_DATABASE_ID__"
+
+[[r2_buckets]]
+binding = "LOG_BUCKET"
+bucket_name = "multibot-logs"
+
+[[r2_buckets]]
+binding = "ASSETS_BUCKET"
+bucket_name = "multibot-assets"
+
+[ai]
+binding = "AI"
+
+# Secrets (set via `wrangler secret put`):
+#   WEBHOOK_SECRET        — webhook signature verification
+#   DASHBOARD_PASSWORD    — dashboard login password
+#   SPRITES_TOKEN         — Fly.io Sprites API token
+
+[vars]
+BASE_URL = "__BASE_URL__"
+OWNER_ID = "__OWNER_ID__"
+
+[assets]
+directory = "./dashboard/dist"
+not_found_handling = "single-page-application"
+run_worker_first = ["/api/*", "/webhook/*", "/health", "/media/*", "/upload"]
+
+[[rules]]
+type = "Text"
+globs = ["**/*.server.js"]
+fallthrough = true
+
+[[rules]]
+type = "Text"
+globs = ["skills/**/*.py"]
+fallthrough = true
+
+[[rules]]
+type = "Text"
+globs = ["**/*.md"]
+fallthrough = true
+
+[triggers]
+crons = ["0 3 */3 * *"]
+
+[observability]
+enabled = true

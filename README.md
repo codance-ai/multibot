@@ -1,0 +1,107 @@
+# multibot
+
+A fully serverless, multi-bot AI platform that runs on Cloudflare edge. Create, configure, and manage multiple AI bots through a web dashboard -- connect them to Telegram, Discord, or Slack with one click.
+
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+[![Node Version](https://img.shields.io/badge/node-18%2B-brightgreen.svg)](https://nodejs.org/)
+
+## Feature Highlights
+
+### Fully Serverless, One-Click Deploy
+
+Runs entirely on Cloudflare edge (Workers + Durable Objects). No servers to manage, scales automatically.
+
+### Low Cost
+
+Starting at $5/month with pay-as-you-go pricing. No DevOps overhead.
+
+### BYOK (Bring Your Own Key)
+
+Use any LLM provider: OpenAI, Anthropic, Google, DeepSeek, or any OpenAI-compatible endpoint.
+
+### Multi-Bot Group Chat
+
+Multiple AI bots collaborate in group conversations, coordinated by an orchestrator.
+
+### Bot Sandbox
+
+Each bot gets its own persistent Linux environment for shell commands and file operations (powered by [Fly.io Sprites](https://sprites.dev)).
+
+### Sub-Agent Spawning
+
+Bots can spawn child agents for complex, multi-step tasks.
+
+### And More
+
+- **Memory** -- two-layer architecture (MEMORY + HISTORY) with LLM-driven consolidation
+- **Voice** -- Speech-to-Text (Cloudflare Workers AI Whisper) and Text-to-Speech (OpenAI TTS)
+- **Scheduling** -- one-shot, interval, and cron expressions with timezone support
+- **Skills** -- Markdown-driven skill system with progressive loading
+- **Observability** -- structured JSON logging, R2 request traces, per-request duration tracking
+
+## Quick Start
+
+### Prerequisites
+
+- [Node.js](https://nodejs.org/) 18+
+- [Cloudflare account](https://dash.cloudflare.com/sign-up) with Workers Paid plan ($5/mo for Durable Objects & Cron Triggers)
+- [Fly.io Sprites](https://sprites.dev) API token (for bot sandbox -- shell & file tools)
+
+### Setup & Deploy
+
+```bash
+git clone https://github.com/codance-ai/multibot.git
+cd multibot
+./scripts/setup.sh    # installs deps, logs in to CF, creates all resources
+npm run deploy        # builds dashboard + deploys worker
+```
+
+`setup.sh` handles everything: installs dependencies, logs in to Cloudflare (opens browser), creates D1/R2 resources, auto-detects your account email and workers.dev subdomain, and generates `wrangler.toml` (gitignored).
+
+### After Deploying
+
+Open `https://multibot.<your-subdomain>.workers.dev`:
+
+1. **Add LLM API keys** -- Settings page, supports multiple providers
+2. **Create a bot** -- name, system prompt, model, skills
+3. **Bind a channel** -- connect Telegram, Discord, or Slack
+
+### Optional: Dashboard Auth
+
+```bash
+npx tsx scripts/setup-access.ts
+```
+
+Protects the dashboard with Cloudflare Access (free with Workers Paid).
+
+### Development
+
+```bash
+npm run dev       # local dev server
+npm test          # run all tests
+npm run deploy    # build dashboard + deploy worker
+```
+
+## Architecture
+
+```
+Telegram ──┐
+Discord  ──┼── Gateway (Worker) ──► Durable Object (Agent) ──► LLM Provider
+Slack    ──┘   token → botId        per conversation            OpenAI / Anthropic / Google / ...
+               chatId → agent       memory, tools, skills
+                                         │
+                                    Sandbox (Sprites)
+                                    shell, filesystem
+```
+
+| Concept | Description |
+|---------|-------------|
+| **User** | Platform user, owns bots, manages LLM API keys |
+| **Bot** | AI assistant with its own prompt, model, skills config |
+| **Channel** | Chat platform binding (Telegram / Discord / Slack) |
+| **Agent** | Runtime instance (DO), one per `{botId}-{channel}-{chatId}` |
+| **Sandbox** | Linux sandbox, one per bot, for shell/file tools ([Fly.io Sprites](https://sprites.dev)) |
+
+## License
+
+MIT
