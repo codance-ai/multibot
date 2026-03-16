@@ -39,7 +39,7 @@ info "Checking prerequisites..."
 
 if ! command -v node >/dev/null 2>&1; then
   echo ""
-  fail "Node.js is not installed. Install Node.js 18+:
+  fail "Node.js is not installed. Install Node.js 20+:
     macOS:   brew install node
     Linux:   curl -fsSL https://deb.nodesource.com/setup_22.x | sudo -E bash - && sudo apt-get install -y nodejs
     Any OS:  https://nodejs.org/en/download"
