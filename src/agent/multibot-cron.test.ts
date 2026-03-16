@@ -97,6 +97,7 @@ function makeDeps(
       tools: {},
       sandboxClient: {} as any,
       botConfig,
+      groupVoiceSentRef: { value: false },
     }),
     buildPromptAndHistory: vi.fn().mockResolvedValue({
       systemPrompt: "System prompt",
@@ -167,6 +168,43 @@ describe("executeCronJob voice delivery", () => {
       expect.objectContaining({ voiceSent: true, reply: "Scheduled hello" }),
       expect.anything(),
     );
+  });
+
+  it("strips trailing assistant text from persistence when sentToGroup", async () => {
+    mocked.runAgentLoop.mockResolvedValue({
+      reply: "I just posted in the group",
+      toolResults: [],
+      newMessages: [
+        { role: "assistant", content: null, toolCalls: JSON.stringify([{ toolCallId: "tc-1", toolName: "send_to_group", input: {} }]) },
+        { role: "tool", content: 'Message sent to group "Test Group".', toolCallId: "tc-1", toolName: "send_to_group" },
+        { role: "assistant", content: "I just posted in the group", botId: "bot-1", requestId: "req-1" },
+      ],
+      model: "test-model",
+      iterations: 1,
+      inputTokens: 10,
+      outputTokens: 6,
+      skillCalls: [],
+    });
+    mocked.resolveAndNormalizeReply.mockResolvedValue({
+      normalizedText: "I just posted in the group",
+      attachments: [],
+      media: [],
+    });
+
+    const deps = makeDeps("off");
+    const log = createLogger({ botId: "bot-1", channel: "telegram", chatId: "chat-1" });
+    vi.spyOn(log, "flush").mockResolvedValue(undefined);
+
+    await executeCronJob(deps, makePayload(), log);
+
+    // The trailing text-only assistant message should be filtered out
+    const persistedMessages = mocked.persistMessages.mock.calls[0][2];
+    expect(persistedMessages).toHaveLength(2); // tool call + tool result, no trailing text
+    expect(persistedMessages.every((m: any) => m.role !== "assistant" || m.toolCalls != null)).toBe(true);
+
+    // Should NOT send to private chat
+    expect(deps.sendChannelMessage).not.toHaveBeenCalled();
+    expect(deps.sendChannelAudio).not.toHaveBeenCalled();
   });
 
   it("does not send audio for cron replies when voiceMode is mirror", async () => {

@@ -1,6 +1,6 @@
 import { describe, it, expect, vi } from "vitest";
 import { createGroupMessageTools } from "./group-message";
-import type { GroupMessageContext, GroupMessagePersister } from "./group-message";
+import type { GroupMessageContext, GroupMessagePersister, VoiceSender } from "./group-message";
 import type { ChannelSender } from "./message";
 import type { GroupConfig } from "../config/schema";
 
@@ -214,6 +214,39 @@ describe("createGroupMessageTools", () => {
     );
 
     expect(dispatcher).not.toHaveBeenCalled();
+  });
+
+  it("uses voiceSender when provided", async () => {
+    const sender = vi.fn<ChannelSender>().mockResolvedValue(undefined);
+    const persister = vi.fn<GroupMessagePersister>().mockResolvedValue(undefined);
+    const voiceSender = vi.fn<VoiceSender>().mockResolvedValue({ voiceSent: true });
+    const ctx = makeCtx({ voiceSender });
+    const tools = createGroupMessageTools(sender, persister, ctx);
+
+    const result = await tools.send_to_group.execute!(
+      { message: "Hello voice!" },
+      execOpts,
+    );
+
+    expect(result).toBe('Message sent to group "Work Team".');
+    expect(voiceSender).toHaveBeenCalledWith("telegram", "tok-abc", "-100123", "Hello voice!");
+    expect(sender).not.toHaveBeenCalled();
+    expect(persister).toHaveBeenCalled();
+  });
+
+  it("falls back to plain sender when voiceSender not provided", async () => {
+    const sender = vi.fn<ChannelSender>().mockResolvedValue(undefined);
+    const persister = vi.fn<GroupMessagePersister>().mockResolvedValue(undefined);
+    const ctx = makeCtx(); // no voiceSender
+    const tools = createGroupMessageTools(sender, persister, ctx);
+
+    const result = await tools.send_to_group.execute!(
+      { message: "Hello text!" },
+      execOpts,
+    );
+
+    expect(result).toBe('Message sent to group "Work Team".');
+    expect(sender).toHaveBeenCalledWith("telegram", "tok-abc", "-100123", "Hello text!");
   });
 
   it("includes group names in tool description", () => {

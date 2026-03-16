@@ -5,7 +5,7 @@ import { createModel } from "../providers/gateway";
 import type { CronScheduler } from "../tools/cron";
 import type { CronJobPayload } from "../cron/types";
 import type { SandboxClient } from "../tools/sandbox-types";
-import type { SenderOptions } from "../channels/registry";
+import type { SenderOptions, SendAudioOptions } from "../channels/registry";
 import { createSpritesSandboxClient, ensureSpriteHealthy } from "../tools/sprites-sandbox";
 import { consolidateMemory, estimateTokens, reviewMemory } from "./memory";
 import type { ChatCoordinator } from "../group/coordinator";
@@ -165,6 +165,7 @@ export class MultibotAgent extends Agent<Env> {
       getMcpTools: () => this.mcp.getAITools(),
       sendChannelMessage: (ch: string, tok: string, cid: string, text: string, opts?: SenderOptions) =>
         sendChannelMessage(ch, tok, cid, text, opts),
+      sendChannelAudio: (ch: string, tok: string, cid: string, audio: ArrayBuffer, opts?: SendAudioOptions) => sendChannelAudio(ch, tok, cid, audio, opts),
       startTypingLoop,
       dispatchGroupOrchestrator: (params: {
         channel: string; token: string; ownerId: string; groupId: string;

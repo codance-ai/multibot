@@ -97,9 +97,10 @@ export async function executeCronJob(deps: CronDeps, payload: CronJobPayload, lo
       ensureMcpConnected: deps.ensureMcpConnected,
       getMcpTools: deps.getMcpTools,
       sendChannelMessage: deps.sendChannelMessage,
+      sendChannelAudio: deps.sendChannelAudio,
       dispatchGroupOrchestrator: deps.dispatchGroupOrchestrator,
     });
-    const { tools, sandboxClient } = cronBuildResult;
+    const { tools, sandboxClient, groupVoiceSentRef } = cronBuildResult;
     botConfig = cronBuildResult.botConfig;
 
     // 6. Determine session ID for this cron job
@@ -170,14 +171,28 @@ export async function executeCronJob(deps: CronDeps, payload: CronJobPayload, lo
       webhookSecret: deps.env.WEBHOOK_SECRET,
     });
 
+    // Detect whether the bot already delivered via send_to_group
+    const sentToGroup = result.newMessages.some(
+      (m) => m.role === "tool" && m.toolName === "send_to_group" && m.content?.startsWith("Message sent to group"),
+    );
+
+    // When the cron task was fulfilled via send_to_group, the LLM's trailing text reply
+    // (e.g. "I just posted in the group…") is unnecessary — strip it before persistence.
+    const messagesToPersist = sentToGroup
+      ? result.newMessages.filter((m, i, arr) => {
+          // Keep everything except trailing text-only assistant messages (no tool calls)
+          if (m.role !== "assistant" || m.toolCalls) return true;
+          // Only strip if it's the last assistant message
+          const lastAssistantIdx = arr.findLastIndex((x) => x.role === "assistant");
+          return i !== lastAssistantIdx;
+        })
+      : result.newMessages;
+
     // NOW persist (after normalization)
     await d1.persistUserMessage(deps.db, sessionId, userMessage, log.requestId);
-    await d1.persistMessages(deps.db, sessionId, result.newMessages);
+    await d1.persistMessages(deps.db, sessionId, messagesToPersist);
 
     if (normalizedText || media.length > 0) {
-      const sentToGroup = result.newMessages.some(
-        (m) => m.role === "tool" && m.toolName === "send_to_group" && m.content?.startsWith("Message sent to group"),
-      );
 
       // Only send to the cron's chatId if agent didn't already send via send_to_group
       if (!sentToGroup) {
@@ -199,6 +214,11 @@ export async function executeCronJob(deps: CronDeps, payload: CronJobPayload, lo
           },
         );
         voiceSent = replyResult.voiceSent;
+      }
+
+      // When send_to_group handled delivery, read the actual voiceSent result from the shared ref.
+      if (sentToGroup && groupVoiceSentRef.value) {
+        voiceSent = true;
       }
 
       // 10b. If cron sent to a group chat, persist reply to group session + trigger orchestrator

@@ -51,7 +51,8 @@ export async function buildAgentTools(params: {
   buildRemoteCronScheduler: (botId: string) => CronScheduler;
   ensureMcpConnected: (mcpServers: Record<string, { url: string; headers: Record<string, string> }>, log?: Logger) => Promise<void>;
   getMcpTools: () => ToolSet;
-  sendChannelMessage: (ch: string, tok: string, cid: string, text: string) => Promise<void>;
+  sendChannelMessage: (ch: string, tok: string, cid: string, text: string, opts?: import("../channels/registry").SenderOptions) => Promise<void>;
+  sendChannelAudio?: (ch: string, tok: string, cid: string, audio: ArrayBuffer, opts?: import("../channels/registry").SendAudioOptions) => Promise<{ captionSent: boolean }>;
   dispatchGroupOrchestrator: (params: {
     channel: string;
     token: string;
@@ -63,7 +64,7 @@ export async function buildAgentTools(params: {
     message: string;
     parentRequestId?: string;
   }) => void;
-}): Promise<{ tools: ToolSet; sandboxClient: SandboxClient; botConfig: BotConfig }> {
+}): Promise<{ tools: ToolSet; sandboxClient: SandboxClient; botConfig: BotConfig; groupVoiceSentRef: { value: boolean } }> {
   let { botConfig } = params;
   const {
     env, db, userKeys, channel, chatId, channelToken,
@@ -124,6 +125,8 @@ export async function buildAgentTools(params: {
   );
   const loadSkillTools = createLoadSkillTool(BUILTIN_SKILLS, sandboxClient, hydrator);
   const webSearchTools = createWebSearchTool(userKeys.brave ?? "");
+  // Shared ref: voiceSender inside send_to_group writes this so callers (e.g. cron) can read the actual voiceSent result.
+  const groupVoiceSentRef = { value: false };
   // Group message tool: available in private chat when bot belongs to groups
   let groupMessageTools = {};
   if (enableMessageTool) {
@@ -131,6 +134,23 @@ export async function buildAgentTools(params: {
       env.D1_DB, botConfig.ownerId, botConfig.botId
     );
     if (groups.length > 0) {
+      // Build voiceSender for send_to_group tool (TTS delivery when voice is configured)
+      // Writes actual voiceSent result to groupVoiceSentRef so callers can read it after the agent loop.
+      const voiceSender = params.sendChannelAudio
+        ? async (ch: string, tok: string, cid: string, text: string) => {
+            const { sendFinalReply, buildTtsPolicy } = await import("../voice/send-reply");
+            const ttsPolicy = buildTtsPolicy(botConfig, userKeys);
+            const result = await sendFinalReply(
+              { text, channelToken: tok, chatId: cid, ttsPolicy, isVoiceMessage: false },
+              {
+                sendMessage: (t, c, txt, opts) => params.sendChannelMessage(ch, t, c, txt, opts),
+                sendAudio: (t, c, audio, opts) => params.sendChannelAudio!(ch, t, c, audio, opts),
+              },
+            );
+            if (result.voiceSent) groupVoiceSentRef.value = true;
+            return result;
+          }
+        : undefined;
       groupMessageTools = createGroupMessageTools(
         (ch, tok, cid, text) => params.sendChannelMessage(ch, tok, cid, text),
         async (groupConfig, ch, cid, senderBotId, message) => {
@@ -163,6 +183,7 @@ export async function buildAgentTools(params: {
               parentRequestId: log?.requestId,
             });
           },
+          voiceSender,
         },
       );
     }
@@ -187,7 +208,7 @@ export async function buildAgentTools(params: {
     execTools, filesystemTools, loadSkillTools, webSearchTools,
     mcpTools, groupMessageTools, skillTools, browseTools,
   );
-  return { tools, sandboxClient, botConfig };
+  return { tools, sandboxClient, botConfig, groupVoiceSentRef };
 }
 
 /**

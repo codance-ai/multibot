@@ -29,6 +29,7 @@ export interface ChatDeps {
   ensureMcpConnected: (mcpServers: Record<string, { url: string; headers: Record<string, string> }>, log?: Logger) => Promise<void>;
   getMcpTools: () => ToolSet;
   sendChannelMessage: (ch: string, tok: string, cid: string, text: string, opts?: SenderOptions) => Promise<void>;
+  sendChannelAudio?: (ch: string, tok: string, cid: string, audio: ArrayBuffer, opts?: import("../channels/registry").SendAudioOptions) => Promise<{ captionSent: boolean }>;
   startTypingLoop: (ch: string, tok: string, cid: string, signal: AbortSignal, deadline?: number) => void;
   dispatchGroupOrchestrator: (params: {
     channel: string;
@@ -234,6 +235,7 @@ export async function processChat(
     ensureMcpConnected: deps.ensureMcpConnected,
     getMcpTools: deps.getMcpTools,
     sendChannelMessage: deps.sendChannelMessage,
+    sendChannelAudio: deps.sendChannelAudio,
     dispatchGroupOrchestrator: deps.dispatchGroupOrchestrator,
   });
   let { tools } = buildResult;

@@ -4,6 +4,13 @@ import { z } from "zod";
 import type { GroupConfig } from "../config/schema";
 import type { ChannelSender } from "./message";
 
+export type VoiceSender = (
+  channel: string,
+  channelToken: string,
+  chatId: string,
+  text: string,
+) => Promise<{ voiceSent: boolean }>;
+
 export type GroupMessagePersister = (
   groupConfig: GroupConfig,
   channel: string,
@@ -28,6 +35,7 @@ export interface GroupMessageContext {
   botName: string;
   groups: GroupConfig[];
   dispatchToOrchestrator?: OrchestratorDispatcher;
+  voiceSender?: VoiceSender;
 }
 
 export function createGroupMessageTools(
@@ -79,8 +87,17 @@ export function createGroupMessageTools(
           return `Error: No chat found for group "${targetGroup.name}" on ${ctx.channel}. The group needs to receive at least one message on this channel first.`;
         }
 
-        // Send to channel
-        await sender(ctx.channel, ctx.channelToken, chatId, message);
+        // Send to channel (prefer voice if available, fallback to text)
+        if (ctx.voiceSender) {
+          try {
+            await ctx.voiceSender(ctx.channel, ctx.channelToken, chatId, message);
+          } catch (e) {
+            console.warn("[send_to_group] voiceSender failed, falling back to text:", e);
+            await sender(ctx.channel, ctx.channelToken, chatId, message);
+          }
+        } else {
+          await sender(ctx.channel, ctx.channelToken, chatId, message);
+        }
 
         // Persist to all bots' sessions in the group
         await persister(
