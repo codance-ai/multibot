@@ -1011,6 +1011,39 @@ function SessionMessages({
     };
   }, [messages]);
 
+  // Load orch traces for bot-originated group turns (no user message anchor).
+  // Uses chainCache to find assistant messages whose parentRequestId (= coordinator requestId)
+  // is not already covered by user-message orch loading.
+  // Note: orchCache is intentionally NOT in the dep array — fetchedOrchIds.current is the
+  // deduplication guard, and including orchCache would cause O(N²) re-runs.
+  useEffect(() => {
+    if (!groupId || !messages) return;
+    let cancelled = false;
+
+    for (const msg of messages) {
+      if (msg.role !== "assistant" || !msg.requestId) continue;
+      const chain = chainCache[msg.requestId];
+      if (!chain?.parentRequestId) continue;
+      const orchKey = chain.parentRequestId;
+      // Already loaded (by user-message effect or previous iteration)?
+      if (fetchedOrchIds.current.has(orchKey)) continue;
+      fetchedOrchIds.current.add(orchKey);
+
+      api.getTraceChain(orchKey).then((items) => {
+        if (cancelled) return;
+        const orchTrace = items.find((it) => it.trace.botId?.startsWith("orchestrator:"));
+        if (orchTrace) {
+          setOrchCache((prev) => ({ ...prev, [orchKey]: orchTrace }));
+        }
+      }).catch((e) => {
+        console.warn("[logs] Failed to load orch trace for bot-originated turn:", orchKey, e);
+      });
+    }
+
+    return () => { cancelled = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- fetchedOrchIds.current is the dedup guard, not orchCache
+  }, [groupId, messages, chainCache]);
+
   // Collect D1 tool_calls by requestId for fallback when R2 trace unavailable
   // Must be before early returns to satisfy Rules of Hooks
   const toolCallsByRequestId = useMemo(() => {
@@ -1306,8 +1339,9 @@ function ChatGroupSection({
   );
 
   const isGroup = chatGroup.groupId != null;
-  // Show session headers for groups (always) or when multiple sessions exist
-  const showSessionHeaders = isGroup || chatGroup.sessions.length > 1;
+  const hasCronSession = chatGroup.sessions.some((s) => s.sessionId.includes("cron"));
+  // Show session headers for groups, cron sessions, or when multiple sessions exist
+  const showSessionHeaders = isGroup || hasCronSession || chatGroup.sessions.length > 1;
   const displayName = isGroup
     ? nameMap[chatGroup.groupId!] || chatGroup.groupId!.slice(0, 8) + "\u2026"
     : chatGroup.botId
