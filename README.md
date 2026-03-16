@@ -3,7 +3,7 @@
 A fully serverless, multi-bot AI platform that runs on Cloudflare edge. Create, configure, and manage multiple AI bots through a web dashboard -- connect them to Telegram, Discord, or Slack with one click.
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
-[![Node Version](https://img.shields.io/badge/node-18%2B-brightgreen.svg)](https://nodejs.org/)
+[![Node Version](https://img.shields.io/badge/node-20%2B-brightgreen.svg)](https://nodejs.org/)
 
 ## Feature Highlights
 
@@ -39,11 +39,17 @@ Bots can spawn child agents for complex, multi-step tasks.
 - **Skills** -- Markdown-driven skill system with progressive loading
 - **Observability** -- structured JSON logging, R2 request traces, per-request duration tracking
 
+## Dashboard
+
+| Bot Management | Bot Configuration | Group Chat | Settings |
+|:-:|:-:|:-:|:-:|
+| [![Bot management](docs/screenshots/bot-list.png)](docs/screenshots/bot-list.png) | [![Bot configuration](docs/screenshots/bot-edit.png)](docs/screenshots/bot-edit.png) | [![Group chat](docs/screenshots/groups.png)](docs/screenshots/groups.png) | [![Settings](docs/screenshots/settings.png)](docs/screenshots/settings.png) |
+
 ## Quick Start
 
 ### Prerequisites
 
-- [Node.js](https://nodejs.org/) 18+
+- [Node.js](https://nodejs.org/) 20+
 - [Cloudflare account](https://dash.cloudflare.com/sign-up) with Workers Paid plan ($5/mo for Durable Objects & Cron Triggers)
 - [Fly.io Sprites](https://sprites.dev) API token (for bot sandbox -- shell & file tools)
 

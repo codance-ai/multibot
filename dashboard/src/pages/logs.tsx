@@ -923,7 +923,6 @@ function SessionMessages({
   useEffect(() => {
     if (!groupId || !messages) return;
     let cancelled = false;
-    const orchBotId = `orchestrator:${groupId}`;
     const userRequestIds = messages
       .filter((m) => m.role === "user" && m.requestId)
       .map((m) => m.requestId!);

@@ -874,31 +874,3 @@ function TimezoneCombobox({
     </Popover>
   );
 }
-
-/* ---------- Voice Preview Button ---------- */
-
-function VoicePreviewButton({ voice }: { voice: string }) {
-  const [playing, setPlaying] = useState(false);
-  const audioRef = useRef<HTMLAudioElement | null>(null);
-
-  function handleClick() {
-    if (playing && audioRef.current) {
-      audioRef.current.pause();
-      audioRef.current.currentTime = 0;
-      setPlaying(false);
-      return;
-    }
-
-    const audio = new Audio(`/voice-samples/${voice}.mp3`);
-    audioRef.current = audio;
-    audio.onended = () => setPlaying(false);
-    audio.onerror = () => setPlaying(false);
-    audio.play().then(() => setPlaying(true)).catch(() => setPlaying(false));
-  }
-
-  return (
-    <Button type="button" variant="outline" size="sm" onClick={handleClick}>
-      {playing ? "Stop" : "Preview"}
-    </Button>
-  );
-}
