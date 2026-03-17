@@ -106,6 +106,11 @@ function buildGroupSystemPrompt(
   groupContext: GroupContext,
   currentBotId: string,
 ): string {
+  const currentBot = groupContext.members.find(m => m.botId === currentBotId);
+  if (!currentBot) {
+    console.warn(`[buildGroupSystemPrompt] currentBotId "${currentBotId}" not found in members list`);
+  }
+  const currentBotName = currentBot?.botName ?? "unknown";
   const others = groupContext.members
     .filter(m => m.botId !== currentBotId)
     .map(m => `- ${m.botName}`)
@@ -126,13 +131,13 @@ function buildGroupSystemPrompt(
   }
 
   return `\n\n## Group Chat [Round ${groupContext.round}/${MAX_ROUNDS}]
-You are in a group chat "${groupContext.groupName}".
+You are ${currentBotName} in a group chat "${groupContext.groupName}".
 
 User: ${groupContext.userName}
 Other bots:
 ${others}${noteLine}
 
-Messages from the user and other bots are prefixed with "[Name]: ". Your own replies have no prefix.
+User messages are shown as "[Name]: message". Other bots' messages are wrapped in <group_reply from="Name"> tags. Your own previous replies have no prefix.
 
 You are texting on a phone in a group chat. Write like people actually text:
 - Keep it short and natural — a few words to a couple sentences is typical. Go longer only when sharing genuinely new information.

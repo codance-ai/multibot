@@ -31,7 +31,7 @@ The system prompt is assembled from 5 orthogonal layers joined by `\n\n---\n\n`.
 
 After the 5 layers, optional appendices:
 - **Session context**: Channel and Chat ID
-- **Group chat context**: Group name, user name, other bot names, round/MAX_ROUNDS pacing hints, conversational style rules (short, natural, phone-texting style)
+- **Group chat context**: Current bot name ("You are {botName} in a group chat"), group name, user name, other bot names, message format description (user messages as `[Name]:`, other bots as `<group_reply>` tags), round/MAX_ROUNDS pacing hints, conversational style rules (short, natural, phone-texting style)
 
 ## Example
 
@@ -45,7 +45,7 @@ buildSystemPrompt() for bot "Alice" in group chat round 3
 → Layer 5: "# Skills\n\n<skills>..."
 → Join with "\n\n---\n\n"
 → Append: "## Current Session\nChannel: telegram\nChat ID: 12345"
-→ Append: "## Group Chat [Round 3/8]\nYou are in a group chat..."
+→ Append: "## Group Chat [Round 3/8]\nYou are Alice in a group chat..."
 ```
 
 ## Token-Aware History Trimming
