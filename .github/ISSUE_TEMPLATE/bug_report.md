@@ -1,30 +1,11 @@
 ---
 name: Bug Report
-about: Report a bug to help us improve
+about: Report a bug
 title: "[Bug] "
 labels: bug
 ---
 
-## Description
+## What happened
 
-A clear and concise description of the bug.
+<!-- Describe the bug and what you expected instead -->
 
-## Steps to Reproduce
-
-1. ...
-2. ...
-3. ...
-
-## Expected Behavior
-
-What you expected to happen.
-
-## Actual Behavior
-
-What actually happened.
-
-## Environment
-
-- **Node.js version**:
-- **OS**:
-- **Browser** (if applicable):
