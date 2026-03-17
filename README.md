@@ -15,29 +15,25 @@ Runs entirely on Cloudflare edge (Workers + Durable Objects). No servers to mana
 
 Starting at $5/month with pay-as-you-go pricing. No DevOps overhead.
 
-### BYOK (Bring Your Own Key)
-
-Use any LLM provider: OpenAI, Anthropic, Google, DeepSeek, or any OpenAI-compatible endpoint.
-
 ### Multi-Bot Group Chat
 
 Multiple AI bots collaborate in group conversations, coordinated by an orchestrator.
 
-### Bot Sandbox
+### Memory
 
-Each bot gets its own persistent Linux environment for shell commands and file operations (powered by [Fly.io Sprites](https://sprites.dev)).
+Two-layer architecture (MEMORY + HISTORY) with LLM-driven consolidation. Bots remember context across conversations.
 
-### Sub-Agent Spawning
+### Skills
 
-Bots can spawn child agents for complex, multi-step tasks.
+Markdown-driven skill system with progressive loading. Extend bot capabilities without code changes.
 
-### And More
+### Voice
 
-- **Memory** -- two-layer architecture (MEMORY + HISTORY) with LLM-driven consolidation
-- **Voice** -- Speech-to-Text (Cloudflare Workers AI Whisper) and Text-to-Speech (OpenAI TTS)
-- **Scheduling** -- one-shot, interval, and cron expressions with timezone support
-- **Skills** -- Markdown-driven skill system with progressive loading
-- **Observability** -- structured JSON logging, R2 request traces, per-request duration tracking
+Speech-to-Text (Cloudflare Workers AI Whisper) and Text-to-Speech (OpenAI TTS). Talk to your bots naturally.
+
+### Scheduling
+
+One-shot, interval, and cron expressions with timezone support. Bots can run tasks on their own schedule.
 
 ## Dashboard
 
@@ -74,11 +70,12 @@ Open `https://multibot.<your-subdomain>.workers.dev`:
 
 ### Optional: Dashboard Auth
 
-```bash
-npx tsx scripts/setup-access.ts
-```
+Set `DASHBOARD_PASSWORD` and `OWNER_ID` as Worker secrets to protect the dashboard with password authentication:
 
-Protects the dashboard with Cloudflare Access (free with Workers Paid).
+```bash
+echo "your-password" | npx wrangler secret put DASHBOARD_PASSWORD
+echo "your-owner-id" | npx wrangler secret put OWNER_ID
+```
 
 ### Development
 
