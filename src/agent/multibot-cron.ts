@@ -176,21 +176,15 @@ export async function executeCronJob(deps: CronDeps, payload: CronJobPayload, lo
       (m) => m.role === "tool" && m.toolName === "send_to_group" && m.content?.startsWith("Message sent to group"),
     );
 
-    // When the cron task was fulfilled via send_to_group, the LLM's trailing text reply
-    // (e.g. "I just posted in the group…") is unnecessary — strip it before persistence.
-    const messagesToPersist = sentToGroup
-      ? result.newMessages.filter((m, i, arr) => {
-          // Keep everything except trailing text-only assistant messages (no tool calls)
-          if (m.role !== "assistant" || m.toolCalls) return true;
-          // Only strip if it's the last assistant message
-          const lastAssistantIdx = arr.findLastIndex((x) => x.role === "assistant");
-          return i !== lastAssistantIdx;
-        })
-      : result.newMessages;
+    // Always persist all assistant messages (including trailing text after send_to_group).
+    // The trailing text closes the tool-call/result cycle in persisted history — removing it
+    // would leave the session ending at a synthetic tool-result, causing providers like Gemini
+    // to reject the next request with a message-ordering error.
+    // Delivery suppression (not sending to channel) is handled separately below.
 
     // NOW persist (after normalization)
     await d1.persistUserMessage(deps.db, sessionId, userMessage, log.requestId);
-    await d1.persistMessages(deps.db, sessionId, messagesToPersist);
+    await d1.persistMessages(deps.db, sessionId, result.newMessages);
 
     if (normalizedText || media.length > 0) {
 

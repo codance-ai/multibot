@@ -146,12 +146,14 @@ describe("buildPromptAndHistory - tool call reconstruction", () => {
       channel: "telegram", chatId: "c1",
     });
 
-    // user, assistant(text + 2 tool-calls), tool(2 results)
-    expect(conversationHistory).toHaveLength(3);
+    // user, assistant(text + 2 tool-calls), tool(2 results), [synthetic assistant repair]
+    expect(conversationHistory).toHaveLength(4);
     const assistantParts = conversationHistory[1].content as any[];
     expect(assistantParts).toHaveLength(3); // text + 2 tool-calls
     const toolParts = conversationHistory[2].content as any[];
     expect(toolParts).toHaveLength(2); // 2 results
+    // Trailing tool repaired with synthetic assistant
+    expect(conversationHistory[3].role).toBe("assistant");
   });
 
   it("falls back to plain text for assistant without tool_calls", async () => {
@@ -353,6 +355,91 @@ describe("buildPromptAndHistory - tool call reconstruction", () => {
     const userParts = conversationHistory[0].content as any[];
     // Should still show generic fallback for old messages without metadata
     expect(userParts[0].text).toContain("[User attached 1 image, 1 file]");
+  });
+});
+
+describe("buildPromptAndHistory - tool→user boundary repair", () => {
+  it("inserts synthetic assistant message when history has tool→user transition", async () => {
+    // Simulates corrupted data: assistant with tool_calls but no trailing assistant text
+    // (caused by PR #783 stripping). The reconstructed history would be:
+    // user → assistant(tool-call) → tool(result) → [missing assistant] → user
+    const toolCalls = JSON.stringify([
+      { toolCallId: "tc-1", toolName: "send_to_group", input: {}, result: "Message sent" },
+    ]);
+    // DESC order: newest first
+    const db = mockDb([
+      { role: "user", content: "new task" },
+      { role: "assistant", content: null, tool_calls: toolCalls },
+      { role: "user", content: "old task" },
+    ]);
+    const { conversationHistory } = await buildPromptAndHistory({
+      db, botConfig: makeBotConfig(), sessionId: "s1",
+      channel: "telegram", chatId: "c1",
+    });
+
+    // Should be: user, assistant(tc), tool(result), [synthetic assistant], user
+    expect(conversationHistory).toHaveLength(5);
+    expect(conversationHistory[0].role).toBe("user");
+    expect(conversationHistory[1].role).toBe("assistant");
+    expect(conversationHistory[2].role).toBe("tool");
+    expect(conversationHistory[3].role).toBe("assistant");
+    expect(conversationHistory[4].role).toBe("user");
+
+    // The synthetic assistant message should have the repair text
+    const parts = conversationHistory[3].content as any[];
+    expect(parts[0].text).toBe("[Tool call completed]");
+  });
+
+  it("repairs trailing tool message at end of history", async () => {
+    // Simulates the exact PR #783 corruption on the most recent cron turn:
+    // the last row in D1 is assistant with tool_calls, no trailing text.
+    // conversationHistory ends at tool(result), and the next userMessage
+    // would form tool→user when appended by runAgentLoop.
+    const toolCalls = JSON.stringify([
+      { toolCallId: "tc-1", toolName: "send_to_group", input: {}, result: "Message sent" },
+    ]);
+    // DESC order: newest first — last turn has no trailing assistant text
+    const db = mockDb([
+      { role: "assistant", content: null, tool_calls: toolCalls },
+      { role: "user", content: "task" },
+    ]);
+    const { conversationHistory } = await buildPromptAndHistory({
+      db, botConfig: makeBotConfig(), sessionId: "s1",
+      channel: "telegram", chatId: "c1",
+    });
+
+    // Should be: user, assistant(tc), tool(result), [synthetic assistant]
+    expect(conversationHistory).toHaveLength(4);
+    expect(conversationHistory[2].role).toBe("tool");
+    expect(conversationHistory[3].role).toBe("assistant");
+    const parts = conversationHistory[3].content as any[];
+    expect(parts[0].text).toBe("[Tool call completed]");
+  });
+
+  it("does not insert synthetic assistant when history is well-formed", async () => {
+    const toolCalls = JSON.stringify([
+      { toolCallId: "tc-1", toolName: "exec", input: {}, result: "ok" },
+    ]);
+    // DESC order: well-formed with trailing assistant text
+    const db = mockDb([
+      { role: "user", content: "new task" },
+      { role: "assistant", content: "Done!" },
+      { role: "assistant", content: null, tool_calls: toolCalls },
+      { role: "user", content: "old task" },
+    ]);
+    const { conversationHistory } = await buildPromptAndHistory({
+      db, botConfig: makeBotConfig(), sessionId: "s1",
+      channel: "telegram", chatId: "c1",
+    });
+
+    // user, assistant(tc), tool(result), assistant(text), user — no repair needed
+    expect(conversationHistory).toHaveLength(5);
+    // No "[Tool call completed]" message
+    const texts = conversationHistory
+      .flatMap((m) => Array.isArray(m.content) ? m.content : [])
+      .filter((p: any) => p.type === "text")
+      .map((p: any) => p.text);
+    expect(texts).not.toContain("[Tool call completed]");
   });
 });
 
