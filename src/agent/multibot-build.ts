@@ -74,7 +74,7 @@ export async function buildAgentTools(params: {
   const memoryTools = createMemoryTools(db, botConfig.botId);
   // Admin bots get management tools; normal bots get none (skill tools removed per #280)
   const adminTools = botConfig.botType === "admin"
-    ? createAdminTools(env, botConfig.ownerId)
+    ? createAdminTools(env, botConfig.ownerId, params.getSandboxClient)
     : {};
   // Use bot's own channel token for cron payloads (fixes group chat channelToken bug)
   const cronToken = botConfig.channels[channel]?.token || channelToken;
