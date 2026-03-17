@@ -105,6 +105,7 @@ describe("withRetry", () => {
 
   it("applies exponential backoff delays", async () => {
     vi.useFakeTimers();
+    vi.spyOn(Math, "random").mockReturnValue(0.5); // jitter = 250ms
     const fn = vi
       .fn()
       .mockRejectedValueOnce(new TypeError("fail"))
@@ -113,17 +114,18 @@ describe("withRetry", () => {
 
     const promise = withRetry(fn, { maxAttempts: 3, baseDelayMs: 100 });
 
-    // After first failure: 100ms + jitter (0-500ms)
+    // After first failure: 100ms + 250ms jitter = 350ms
     expect(fn).toHaveBeenCalledTimes(1);
-    await vi.advanceTimersByTimeAsync(600);
+    await vi.advanceTimersByTimeAsync(350);
     expect(fn).toHaveBeenCalledTimes(2);
 
-    // After second failure: 200ms + jitter (0-500ms)
-    await vi.advanceTimersByTimeAsync(700);
+    // After second failure: 200ms + 250ms jitter = 450ms
+    await vi.advanceTimersByTimeAsync(450);
     const result = await promise;
 
     expect(result).toBe("ok");
     expect(fn).toHaveBeenCalledTimes(3);
+    vi.restoreAllMocks();
   });
 
   it("logs warn on retry when log is provided", async () => {
