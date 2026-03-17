@@ -477,5 +477,24 @@ export async function buildPromptAndHistory(params: {
       content: [{ type: "text" as const, text }],
     }];
   });
+
+  // Defensive repair: ensure no tool → user transitions in the history.
+  // Some providers (Gemini) require a model response between function_response and the
+  // next user turn. This can happen with corrupted data from a bug that stripped trailing
+  // assistant messages after tool calls.
+  for (let i = 1; i < conversationHistory.length; i++) {
+    if (
+      conversationHistory[i].role === "user" &&
+      conversationHistory[i - 1].role === "tool"
+    ) {
+      console.warn("[build] Repairing tool → user boundary in conversation history");
+      conversationHistory.splice(i, 0, {
+        role: "assistant" as const,
+        content: [{ type: "text" as const, text: "[Tool call completed]" }],
+      });
+      i++; // skip the inserted message
+    }
+  }
+
   return { systemPrompt, conversationHistory, tokenUsage };
 }

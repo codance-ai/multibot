@@ -170,7 +170,7 @@ describe("executeCronJob voice delivery", () => {
     );
   });
 
-  it("strips trailing assistant text from persistence when sentToGroup", async () => {
+  it("persists all messages including trailing assistant text when sentToGroup", async () => {
     mocked.runAgentLoop.mockResolvedValue({
       reply: "I just posted in the group",
       toolResults: [],
@@ -197,12 +197,14 @@ describe("executeCronJob voice delivery", () => {
 
     await executeCronJob(deps, makePayload(), log);
 
-    // The trailing text-only assistant message should be filtered out
+    // All messages should be persisted — trailing assistant text closes the
+    // tool-call/result cycle, required for valid history reconstruction
     const persistedMessages = mocked.persistMessages.mock.calls[0][2];
-    expect(persistedMessages).toHaveLength(2); // tool call + tool result, no trailing text
-    expect(persistedMessages.every((m: any) => m.role !== "assistant" || m.toolCalls != null)).toBe(true);
+    expect(persistedMessages).toHaveLength(3);
+    expect(persistedMessages[2].role).toBe("assistant");
+    expect(persistedMessages[2].content).toBe("I just posted in the group");
 
-    // Should NOT send to private chat
+    // Should NOT send to private chat (delivery suppressed, but persistence kept)
     expect(deps.sendChannelMessage).not.toHaveBeenCalled();
     expect(deps.sendChannelAudio).not.toHaveBeenCalled();
   });
