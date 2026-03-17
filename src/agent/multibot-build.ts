@@ -495,6 +495,17 @@ export async function buildPromptAndHistory(params: {
       i++; // skip the inserted message
     }
   }
+  // Also repair trailing tool message at end of history (next userMessage would form tool→user)
+  if (
+    conversationHistory.length > 0 &&
+    conversationHistory[conversationHistory.length - 1].role === "tool"
+  ) {
+    console.warn("[build] Repairing trailing tool message at end of conversation history");
+    conversationHistory.push({
+      role: "assistant" as const,
+      content: [{ type: "text" as const, text: "[Tool call completed]" }],
+    });
+  }
 
   return { systemPrompt, conversationHistory, tokenUsage };
 }
