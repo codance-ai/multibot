@@ -3,6 +3,7 @@
  */
 
 import type { Env, BotConfig } from "../../config/schema";
+import type { SandboxClient } from "../sandbox-types";
 import { listAllSkills } from "../../skills/loader";
 
 /** Shared dependencies passed to each admin tool sub-module. */
@@ -11,6 +12,7 @@ export interface AdminToolDeps {
   env: Env;
   ownerId: string;
   baseUrl: string;
+  getSandboxClient?: (botId: string) => SandboxClient;
 }
 
 /** Validate skill names against bundled + installed skills. Returns error message or null. */

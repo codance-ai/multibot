@@ -1667,4 +1667,220 @@ describe("createAdminTools", () => {
       expect(result).toContain("DB error");
     });
   });
+
+  // -------------------------------------------------------------------------
+  // Sandbox admin tools
+  // -------------------------------------------------------------------------
+
+  describe("sandbox admin tools", () => {
+    let sandboxTools: ReturnType<typeof createAdminTools>;
+    let mockSandbox: {
+      exec: ReturnType<typeof vi.fn>;
+      readFile: ReturnType<typeof vi.fn>;
+      writeFile: ReturnType<typeof vi.fn>;
+      exists: ReturnType<typeof vi.fn>;
+      mkdir: ReturnType<typeof vi.fn>;
+    };
+
+    beforeEach(() => {
+      mockSandbox = {
+        exec: vi.fn(),
+        readFile: vi.fn(),
+        writeFile: vi.fn(),
+        exists: vi.fn(),
+        mkdir: vi.fn(),
+      };
+      sandboxTools = createAdminTools(env, OWNER_ID, () => mockSandbox);
+    });
+
+    describe("sandbox_exec", () => {
+      it("executes command in target bot's sandbox", async () => {
+        vi.mocked(configDb.getBot).mockResolvedValue(makeBot({ botId: "b1" }));
+        mockSandbox.exec.mockResolvedValue({
+          success: true,
+          stdout: "hello world\n",
+          stderr: "",
+          exitCode: 0,
+        });
+
+        const result = await exec(sandboxTools, "sandbox_exec", {
+          botId: "b1",
+          command: "echo hello world",
+        });
+        expect(result).toContain("hello world");
+        expect(result).toContain("Exit code: 0");
+      });
+
+      it("returns error for non-existent bot", async () => {
+        vi.mocked(configDb.getBot).mockResolvedValue(null);
+        const result = await exec(sandboxTools, "sandbox_exec", {
+          botId: "missing",
+          command: "ls",
+        });
+        expect(result).toContain("Bot not found");
+      });
+
+      it("blocks dangerous commands", async () => {
+        vi.mocked(configDb.getBot).mockResolvedValue(makeBot({ botId: "b1" }));
+        const result = await exec(sandboxTools, "sandbox_exec", {
+          botId: "b1",
+          command: "rm -rf /",
+        });
+        expect(result).toContain("blocked by safety filter");
+        expect(mockSandbox.exec).not.toHaveBeenCalled();
+      });
+
+      it("includes stderr in output", async () => {
+        vi.mocked(configDb.getBot).mockResolvedValue(makeBot({ botId: "b1" }));
+        mockSandbox.exec.mockResolvedValue({
+          success: false,
+          stdout: "",
+          stderr: "command not found",
+          exitCode: 127,
+        });
+
+        const result = await exec(sandboxTools, "sandbox_exec", {
+          botId: "b1",
+          command: "nonexistent",
+        });
+        expect(result).toContain("STDERR:");
+        expect(result).toContain("command not found");
+        expect(result).toContain("Exit code: 127");
+      });
+
+      it("caps timeout at 120 seconds", async () => {
+        vi.mocked(configDb.getBot).mockResolvedValue(makeBot({ botId: "b1" }));
+        mockSandbox.exec.mockResolvedValue({
+          success: true,
+          stdout: "",
+          stderr: "",
+          exitCode: 0,
+        });
+
+        await exec(sandboxTools, "sandbox_exec", {
+          botId: "b1",
+          command: "sleep 1",
+          timeout: 999,
+        });
+        expect(mockSandbox.exec).toHaveBeenCalledWith("sleep 1", { timeout: 120_000 });
+      });
+    });
+
+    describe("sandbox_read_file", () => {
+      it("reads file from target bot's sandbox", async () => {
+        vi.mocked(configDb.getBot).mockResolvedValue(makeBot({ botId: "b1" }));
+        mockSandbox.readFile.mockResolvedValue("file content here");
+
+        const result = await exec(sandboxTools, "sandbox_read_file", {
+          botId: "b1",
+          path: "/home/sprite/test.txt",
+        });
+        expect(result).toBe("file content here");
+      });
+
+      it("rejects invalid paths", async () => {
+        vi.mocked(configDb.getBot).mockResolvedValue(makeBot({ botId: "b1" }));
+        const result = await exec(sandboxTools, "sandbox_read_file", {
+          botId: "b1",
+          path: "../etc/passwd",
+        });
+        expect(result).toContain("Invalid path");
+        expect(mockSandbox.readFile).not.toHaveBeenCalled();
+      });
+
+      it("truncates large output", async () => {
+        vi.mocked(configDb.getBot).mockResolvedValue(makeBot({ botId: "b1" }));
+        mockSandbox.readFile.mockResolvedValue("x".repeat(20_000));
+
+        const result = await exec(sandboxTools, "sandbox_read_file", {
+          botId: "b1",
+          path: "/home/sprite/big.txt",
+        });
+        expect(result).toContain("truncated");
+        expect(result).toContain("total 20000 chars");
+      });
+    });
+
+    describe("sandbox_write_file", () => {
+      it("writes file to target bot's sandbox", async () => {
+        vi.mocked(configDb.getBot).mockResolvedValue(makeBot({ botId: "b1", name: "TestBot" }));
+        mockSandbox.writeFile.mockResolvedValue(undefined);
+
+        const result = await exec(sandboxTools, "sandbox_write_file", {
+          botId: "b1",
+          path: "/home/sprite/output.txt",
+          content: "hello",
+        });
+        expect(result).toContain("Written 5 chars");
+        expect(result).toContain("TestBot");
+        expect(mockSandbox.writeFile).toHaveBeenCalledWith("/home/sprite/output.txt", "hello");
+      });
+
+      it("rejects path traversal", async () => {
+        vi.mocked(configDb.getBot).mockResolvedValue(makeBot({ botId: "b1" }));
+        const result = await exec(sandboxTools, "sandbox_write_file", {
+          botId: "b1",
+          path: "/home/sprite/../etc/crontab",
+          content: "bad",
+        });
+        expect(result).toContain("Invalid path");
+      });
+    });
+
+    describe("sandbox_list_files", () => {
+      it("lists files in target bot's sandbox", async () => {
+        vi.mocked(configDb.getBot).mockResolvedValue(makeBot({ botId: "b1" }));
+        mockSandbox.exec.mockResolvedValue({
+          success: true,
+          stdout: "drwxr-xr-x 2 sprite sprite 4096 Mar 01 test\n",
+          stderr: "",
+          exitCode: 0,
+        });
+
+        const result = await exec(sandboxTools, "sandbox_list_files", { botId: "b1" });
+        expect(result).toContain("test");
+        expect(mockSandbox.exec).toHaveBeenCalledWith("ls -la /home/sprite");
+      });
+
+      it("uses custom path when provided", async () => {
+        vi.mocked(configDb.getBot).mockResolvedValue(makeBot({ botId: "b1" }));
+        mockSandbox.exec.mockResolvedValue({
+          success: true,
+          stdout: "file1.txt\n",
+          stderr: "",
+          exitCode: 0,
+        });
+
+        await exec(sandboxTools, "sandbox_list_files", {
+          botId: "b1",
+          path: "/workspace",
+        });
+        expect(mockSandbox.exec).toHaveBeenCalledWith("ls -la /workspace");
+      });
+
+      it("returns error for non-existent directory", async () => {
+        vi.mocked(configDb.getBot).mockResolvedValue(makeBot({ botId: "b1" }));
+        mockSandbox.exec.mockResolvedValue({
+          success: false,
+          stdout: "",
+          stderr: "No such file or directory",
+          exitCode: 2,
+        });
+
+        const result = await exec(sandboxTools, "sandbox_list_files", {
+          botId: "b1",
+          path: "/nonexistent",
+        });
+        expect(result).toContain("No such file or directory");
+      });
+    });
+
+    it("returns no sandbox tools when getSandboxClient is not provided", () => {
+      const noSandboxTools = createAdminTools(env, OWNER_ID);
+      expect(noSandboxTools).not.toHaveProperty("sandbox_exec");
+      expect(noSandboxTools).not.toHaveProperty("sandbox_read_file");
+      expect(noSandboxTools).not.toHaveProperty("sandbox_write_file");
+      expect(noSandboxTools).not.toHaveProperty("sandbox_list_files");
+    });
+  });
 });
