@@ -12,6 +12,11 @@ import type { AdminToolDeps } from "./utils";
 
 const MAX_OUTPUT_CHARS = 10_000;
 
+/** Shell-safe single-quote a value (same pattern as sprites-sandbox.ts). */
+function shellQuote(s: string): string {
+  return `'${s.replace(/'/g, "'\\''")}'`;
+}
+
 function truncateOutput(text: string): string {
   if (text.length <= MAX_OUTPUT_CHARS) return text;
   const remaining = text.length - MAX_OUTPUT_CHARS;
@@ -79,7 +84,7 @@ export function createSandboxAdminTools(deps: AdminToolDeps): ToolSet {
           const sandbox = getSandboxClient(botId);
           const content = await sandbox.readFile(path);
 
-          const limit = maxLength ?? MAX_OUTPUT_CHARS;
+          const limit = Math.min(maxLength ?? MAX_OUTPUT_CHARS, MAX_OUTPUT_CHARS);
           if (content.length > limit) {
             return content.slice(0, limit) + `\n... (truncated, total ${content.length} chars)`;
           }
@@ -133,7 +138,7 @@ export function createSandboxAdminTools(deps: AdminToolDeps): ToolSet {
           if (!validateSpritePath(dirPath)) return `Invalid path: ${dirPath}`;
 
           const sandbox = getSandboxClient(botId);
-          const result = await sandbox.exec(`ls -la ${dirPath}`);
+          const result = await sandbox.exec(`ls -la ${shellQuote(dirPath)}`);
 
           if (!result.success) {
             return result.stderr || `Failed to list: exit code ${result.exitCode}`;

@@ -1839,7 +1839,7 @@ describe("createAdminTools", () => {
 
         const result = await exec(sandboxTools, "sandbox_list_files", { botId: "b1" });
         expect(result).toContain("test");
-        expect(mockSandbox.exec).toHaveBeenCalledWith("ls -la /home/sprite");
+        expect(mockSandbox.exec).toHaveBeenCalledWith("ls -la '/home/sprite'");
       });
 
       it("uses custom path when provided", async () => {
@@ -1855,7 +1855,7 @@ describe("createAdminTools", () => {
           botId: "b1",
           path: "/workspace",
         });
-        expect(mockSandbox.exec).toHaveBeenCalledWith("ls -la /workspace");
+        expect(mockSandbox.exec).toHaveBeenCalledWith("ls -la '/workspace'");
       });
 
       it("returns error for non-existent directory", async () => {
