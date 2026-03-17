@@ -5,14 +5,7 @@ title: "[Feature] "
 labels: enhancement
 ---
 
-## Description
+## What and why
 
-A clear and concise description of the feature you'd like.
+<!-- Describe the feature and the problem it solves -->
 
-## Use Case
-
-Explain the problem this feature would solve or the workflow it would improve.
-
-## Proposed Solution
-
-Describe how you'd like this feature to work.
