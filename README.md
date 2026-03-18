@@ -7,33 +7,13 @@ A fully serverless, multi-bot AI platform that runs on Cloudflare edge. Create, 
 
 ## Feature Highlights
 
-### Fully Serverless, One-Click Deploy
-
-Runs entirely on Cloudflare edge (Workers + Durable Objects). No servers to manage, scales automatically.
-
-### Low Cost
-
-Starting at $5/month with pay-as-you-go pricing. No DevOps overhead.
-
-### Multi-Bot Group Chat
-
-Multiple AI bots collaborate in group conversations, coordinated by an orchestrator.
-
-### Memory
-
-Two-layer architecture (MEMORY + HISTORY) with LLM-driven consolidation. Bots remember context across conversations.
-
-### Skills
-
-Markdown-driven skill system with progressive loading. Extend bot capabilities without code changes.
-
-### Voice
-
-Speech-to-Text (Cloudflare Workers AI Whisper) and Text-to-Speech (OpenAI TTS). Talk to your bots naturally.
-
-### Scheduling
-
-One-shot, interval, and cron expressions with timezone support. Bots can run tasks on their own schedule.
+- **Fully Serverless**: Runs on Cloudflare edge (Workers + Durable Objects), scales automatically, one-click deploy
+- **Low Cost**: Starting at $5/month with pay-as-you-go pricing, no DevOps overhead
+- **Multi-Bot Group Chat**: Multiple AI bots collaborate in group conversations, coordinated by an orchestrator
+- **Memory**: Two-layer architecture (MEMORY + HISTORY) with LLM-driven consolidation across conversations
+- **Skills**: Markdown-driven skill system with progressive loading, extend bot capabilities without code changes
+- **Voice**: Speech-to-Text (Whisper) and Text-to-Speech (OpenAI TTS), talk to your bots naturally
+- **Scheduling**: One-shot, interval, and cron expressions with timezone support
 
 ## Dashboard
 
