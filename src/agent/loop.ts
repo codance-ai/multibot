@@ -256,33 +256,41 @@ function contentToArray(content: unknown): Array<Record<string, unknown>> {
 }
 
 /**
- * Merge consecutive user messages into a single message to improve LLM input quality.
- * Some providers (Anthropic, Gemini) reject consecutive same-role messages;
- * even for tolerant providers, a single coherent message is easier to understand.
- *
- * Text parts from consecutive messages are joined with "\n\n".
- * Non-text parts (images) are preserved in order.
+ * Check whether a content array contains any tool-call parts.
  */
-export function mergeConsecutiveUserMessages(messages: ModelMessage[]): ModelMessage[] {
+function hasToolCallParts(parts: Array<Record<string, unknown>>): boolean {
+  return parts.some((p) => p.type === "tool-call");
+}
+
+/**
+ * Merge consecutive same-role messages to ensure strict role alternation.
+ * Gemini requires strict user/model alternation and rejects consecutive same-role messages.
+ * Other providers (Claude, GPT) tolerate them but benefit from cleaner input.
+ *
+ * User messages: text parts joined with "\n\n", non-text parts (images) preserved in order.
+ * Assistant messages: text-only messages merged with "\n\n". Messages with tool-call parts
+ * are NOT merged into (tool-calls should stay as distinct turns for proper tool result pairing).
+ * An assistant message with tool-calls that has no preceding tool result is malformed — left as-is.
+ */
+export function mergeConsecutiveMessages(messages: ModelMessage[]): ModelMessage[] {
   if (messages.length <= 1) return messages;
 
   const result: ModelMessage[] = [];
 
   for (const msg of messages) {
     const prev = result[result.length - 1];
+
+    // --- Merge consecutive user messages ---
     if (prev && prev.role === "user" && msg.role === "user") {
-      // Merge into previous user message (immutable — replace last element)
       const prevParts = contentToArray(prev.content);
       const currParts = contentToArray(msg.content);
 
-      // Skip empty messages to avoid producing invalid empty content
       if (currParts.length === 0) continue;
       if (prevParts.length === 0) {
         result[result.length - 1] = { ...msg };
         continue;
       }
 
-      // If both are pure text, join with \n\n as a single text part
       const prevAllText = prevParts.every((p) => p.type === "text");
       const currAllText = currParts.every((p) => p.type === "text");
 
@@ -292,17 +300,60 @@ export function mergeConsecutiveUserMessages(messages: ModelMessage[]): ModelMes
         const currText = currParts.map((p) => p.text).join("");
         mergedContent = [{ type: "text", text: `${prevText}\n\n${currText}` }];
       } else {
-        // Mixed content (text + images): concatenate arrays
         mergedContent = [...prevParts, ...currParts];
       }
       result[result.length - 1] = { ...prev, content: mergedContent as any };
-    } else {
-      result.push({ ...msg });
+      continue;
     }
+
+    // --- Merge consecutive assistant messages (text-only) ---
+    if (prev && prev.role === "assistant" && msg.role === "assistant") {
+      const prevParts = contentToArray(prev.content);
+      const currParts = contentToArray(msg.content);
+
+      // Never merge INTO a message that has tool-call parts (it needs its own tool result)
+      if (hasToolCallParts(prevParts)) {
+        result.push({ ...msg });
+        continue;
+      }
+      // Never merge a message that has tool-call parts into a text message
+      // (tool-call after plain assistant text is malformed — leave as-is for debugging)
+      if (hasToolCallParts(currParts)) {
+        result.push({ ...msg });
+        continue;
+      }
+
+      // Both are text-only assistant messages — safe to merge
+      if (currParts.length === 0) continue;
+      if (prevParts.length === 0) {
+        result[result.length - 1] = { ...msg };
+        continue;
+      }
+
+      const prevAllText = prevParts.every((p) => p.type === "text");
+      const currAllText = currParts.every((p) => p.type === "text");
+
+      let mergedContent: unknown;
+      if (prevAllText && currAllText) {
+        const prevText = prevParts.map((p) => p.text).join("");
+        const currText = currParts.map((p) => p.text).join("");
+        mergedContent = [{ type: "text", text: `${prevText}\n\n${currText}` }];
+      } else {
+        // Mixed content (text + non-text parts): concatenate arrays to preserve all parts
+        mergedContent = [...prevParts, ...currParts];
+      }
+      result[result.length - 1] = { ...prev, content: mergedContent as any };
+      continue;
+    }
+
+    result.push({ ...msg });
   }
 
   return result;
 }
+
+/** @deprecated Use mergeConsecutiveMessages instead */
+export const mergeConsecutiveUserMessages = mergeConsecutiveMessages;
 
 export async function runAgentLoop(params: {
   model: LanguageModel;
@@ -375,8 +426,9 @@ export async function runAgentLoop(params: {
     rawMessages.push({ role: "user", content: userContent as any });
   }
 
-  // Merge consecutive user messages before sending to LLM
-  const messages: ModelMessage[] = mergeConsecutiveUserMessages(rawMessages);
+  // Merge consecutive same-role messages before sending to LLM
+  // (Gemini requires strict user/model alternation)
+  const messages: ModelMessage[] = mergeConsecutiveMessages(rawMessages);
 
   let iterations = 0;
   let toolCallsTotal = 0;

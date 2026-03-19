@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { convertToStoredMessages, formatToolHint, wrapToolsWithErrorHandling, runAgentLoop, mergeConsecutiveUserMessages, TOOL_RESULT_MAX_LENGTH } from "./loop";
+import { convertToStoredMessages, formatToolHint, wrapToolsWithErrorHandling, runAgentLoop, mergeConsecutiveUserMessages, mergeConsecutiveMessages, TOOL_RESULT_MAX_LENGTH } from "./loop";
 import type { ModelMessage, ToolSet } from "ai";
 import { tool } from "ai";
 import { z } from "zod";
@@ -601,7 +601,7 @@ describe("mergeConsecutiveUserMessages", () => {
     expect(result[0].content).toBe("solo");
   });
 
-  it("does not merge system or assistant messages", () => {
+  it("does not merge system messages", () => {
     const messages: ModelMessage[] = [
       { role: "system", content: "sys1" },
       { role: "system", content: "sys2" },
@@ -659,6 +659,105 @@ describe("mergeConsecutiveUserMessages", () => {
     const result = mergeConsecutiveUserMessages(messages);
     expect(result).toHaveLength(1);
     expect(result[0].content).toEqual([{ type: "text", text: "text message\n\narray message" }]);
+  });
+});
+
+describe("mergeConsecutiveMessages — assistant merging", () => {
+  it("merges two consecutive text-only assistant messages", () => {
+    const messages: ModelMessage[] = [
+      { role: "user", content: "hi" },
+      { role: "assistant", content: "hello" },
+      { role: "assistant", content: "how are you?" },
+    ];
+    const result = mergeConsecutiveMessages(messages);
+    expect(result).toHaveLength(2);
+    expect(result[1].role).toBe("assistant");
+    expect(result[1].content).toEqual([{ type: "text", text: "hello\n\nhow are you?" }]);
+  });
+
+  it("merges three consecutive text-only assistant messages", () => {
+    const messages: ModelMessage[] = [
+      { role: "user", content: "hi" },
+      { role: "assistant", content: "one" },
+      { role: "assistant", content: "two" },
+      { role: "assistant", content: "three" },
+    ];
+    const result = mergeConsecutiveMessages(messages);
+    expect(result).toHaveLength(2);
+    expect(result[1].content).toEqual([{ type: "text", text: "one\n\ntwo\n\nthree" }]);
+  });
+
+  it("does not merge assistant message with tool-call parts into previous", () => {
+    const messages: ModelMessage[] = [
+      { role: "user", content: "hi" },
+      { role: "assistant", content: "let me check" },
+      { role: "assistant", content: [{ type: "tool-call", toolCallId: "1", toolName: "exec", args: {} }] as any },
+    ];
+    const result = mergeConsecutiveMessages(messages);
+    expect(result).toHaveLength(3);
+    expect(result[1].content).toBe("let me check");
+    expect(result[2].content).toEqual([{ type: "tool-call", toolCallId: "1", toolName: "exec", args: {} }]);
+  });
+
+  it("does not merge text into previous assistant message with tool-call parts", () => {
+    const messages: ModelMessage[] = [
+      { role: "user", content: "hi" },
+      { role: "assistant", content: [{ type: "tool-call", toolCallId: "1", toolName: "exec", args: {} }] as any },
+      { role: "assistant", content: "done" },
+    ];
+    const result = mergeConsecutiveMessages(messages);
+    expect(result).toHaveLength(3);
+  });
+
+  it("does not merge across tool result messages", () => {
+    const messages: ModelMessage[] = [
+      { role: "user", content: "hi" },
+      { role: "assistant", content: [{ type: "tool-call", toolCallId: "1", toolName: "exec", args: {} }] as any },
+      { role: "tool", content: [{ type: "tool-result", toolCallId: "1", result: "ok" }] as any },
+      { role: "assistant", content: "first reply" },
+      { role: "assistant", content: "second reply" },
+    ];
+    const result = mergeConsecutiveMessages(messages);
+    expect(result).toHaveLength(4);
+    expect(result[3].content).toEqual([{ type: "text", text: "first reply\n\nsecond reply" }]);
+  });
+
+  it("still merges consecutive user messages", () => {
+    const messages: ModelMessage[] = [
+      { role: "user", content: "hello" },
+      { role: "user", content: "world" },
+      { role: "assistant", content: "hi" },
+    ];
+    const result = mergeConsecutiveMessages(messages);
+    expect(result).toHaveLength(2);
+    expect(result[0].content).toEqual([{ type: "text", text: "hello\n\nworld" }]);
+  });
+
+  it("handles group chat pattern: cron messages creating consecutive assistants", () => {
+    const messages: ModelMessage[] = [
+      { role: "user", content: "some message" },
+      { role: "assistant", content: "selfie reply with image" },
+      { role: "assistant", content: "cron daily post" },
+      { role: "user", content: "<group_reply from=\"小晚\">nice</group_reply>" },
+      { role: "assistant", content: "thanks!" },
+    ];
+    const result = mergeConsecutiveMessages(messages);
+    expect(result).toHaveLength(4);
+    expect(result[1].content).toEqual([{ type: "text", text: "selfie reply with image\n\ncron daily post" }]);
+    expect(result[2].content).toBe("<group_reply from=\"小晚\">nice</group_reply>");
+    expect(result[3].content).toBe("thanks!");
+  });
+
+  it("skips empty assistant messages during merge", () => {
+    const messages: ModelMessage[] = [
+      { role: "user", content: "hi" },
+      { role: "assistant", content: "hello" },
+      { role: "assistant", content: "" },
+      { role: "assistant", content: "world" },
+    ];
+    const result = mergeConsecutiveMessages(messages);
+    expect(result).toHaveLength(2);
+    expect(result[1].content).toEqual([{ type: "text", text: "hello\n\nworld" }]);
   });
 });
 
