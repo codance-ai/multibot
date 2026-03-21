@@ -45,10 +45,11 @@ vi.mock("../db/d1", () => ({
   upsertMemory: vi.fn(),
   getHistoryEntries: vi.fn(),
   insertHistoryEntry: vi.fn(),
+  searchHistoryEntries: vi.fn(),
 }));
 
 import * as configDb from "../db/config";
-import { getMemory, upsertMemory, getHistoryEntries, insertHistoryEntry } from "../db/d1";
+import { getMemory, upsertMemory, getHistoryEntries, insertHistoryEntry, searchHistoryEntries } from "../db/d1";
 import { listAllSkills } from "../skills/loader";
 
 // ---------------------------------------------------------------------------
@@ -1279,6 +1280,87 @@ describe("createAdminTools", () => {
         correction: "[CORRECTION] something",
       });
       expect(result).toContain("Cannot modify admin bot");
+    });
+  });
+
+  // -------------------------------------------------------------------------
+  // search_bot_memory
+  // -------------------------------------------------------------------------
+
+  describe("search_bot_memory", () => {
+    it("searches MEMORY.md with case-insensitive line matching", async () => {
+      vi.mocked(configDb.getBot).mockResolvedValue(makeBot({ botId: "b1", name: "TestBot" }));
+      vi.mocked(getMemory).mockResolvedValue("# Profile\nFavorite color: blue\nLanguage: English\nFavorite food: pizza");
+      const result = await exec(tools, "search_bot_memory", {
+        botId: "b1",
+        file: "MEMORY.md",
+        query: "favorite",
+      });
+      expect(result).toContain("Favorite color: blue");
+      expect(result).toContain("Favorite food: pizza");
+      expect(result).not.toContain("Language");
+    });
+
+    it("searches HISTORY.md via D1 searchHistoryEntries", async () => {
+      vi.mocked(configDb.getBot).mockResolvedValue(makeBot({ botId: "b1", name: "TestBot" }));
+      vi.mocked(searchHistoryEntries).mockResolvedValue([
+        { id: 1, content: "2026-03-01: Talked about cats", created_at: "2026-03-01" },
+        { id: 2, content: "2026-03-10: User loves cats", created_at: "2026-03-10" },
+      ]);
+      const result = await exec(tools, "search_bot_memory", {
+        botId: "b1",
+        file: "HISTORY.md",
+        query: "cats",
+      });
+      expect(result).toContain("Talked about cats");
+      expect(result).toContain("User loves cats");
+      expect(searchHistoryEntries).toHaveBeenCalledWith(env.D1_DB, "b1", "cats");
+    });
+
+    it("returns no matches for MEMORY.md when query not found", async () => {
+      vi.mocked(configDb.getBot).mockResolvedValue(makeBot({ botId: "b1", name: "TestBot" }));
+      vi.mocked(getMemory).mockResolvedValue("# Profile\nFavorite color: blue");
+      const result = await exec(tools, "search_bot_memory", {
+        botId: "b1",
+        file: "MEMORY.md",
+        query: "pizza",
+      });
+      expect(result).toContain("No matches");
+      expect(result).toContain("TestBot");
+    });
+
+    it("returns no matches for empty MEMORY.md", async () => {
+      vi.mocked(configDb.getBot).mockResolvedValue(makeBot({ botId: "b1", name: "TestBot" }));
+      vi.mocked(getMemory).mockResolvedValue("");
+      const result = await exec(tools, "search_bot_memory", {
+        botId: "b1",
+        file: "MEMORY.md",
+        query: "anything",
+      });
+      expect(result).toContain("empty");
+      expect(result).toContain("TestBot");
+    });
+
+    it("returns no matches for HISTORY.md when query not found", async () => {
+      vi.mocked(configDb.getBot).mockResolvedValue(makeBot({ botId: "b1", name: "TestBot" }));
+      vi.mocked(searchHistoryEntries).mockResolvedValue([]);
+      const result = await exec(tools, "search_bot_memory", {
+        botId: "b1",
+        file: "HISTORY.md",
+        query: "nonexistent",
+      });
+      expect(result).toContain("No matches");
+      expect(result).toContain("TestBot");
+    });
+
+    it("returns error for non-existent bot", async () => {
+      vi.mocked(configDb.getBot).mockResolvedValue(null);
+      const result = await exec(tools, "search_bot_memory", {
+        botId: "missing",
+        file: "MEMORY.md",
+        query: "test",
+      });
+      expect(result).toContain("Bot not found");
     });
   });
 
