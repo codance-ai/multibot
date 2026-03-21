@@ -59,5 +59,6 @@ LLM calls: memory_append({ file: "HISTORY.md", content: "2026-03-11: User asked 
 The admin bot has additional tools for managing other bots' memory:
 
 - **read_bot_memory**: Read another bot's MEMORY.md or HISTORY.md (with truncation)
+- **search_bot_memory**: Search another bot's MEMORY.md or HISTORY.md for entries containing a keyword. MEMORY.md uses case-insensitive line-by-line matching (same as `memory_grep`). HISTORY.md uses `searchHistoryEntries()` D1 LIKE query. Returns matching lines/entries or "No matches"
 - **edit_bot_memory**: Edit another bot's MEMORY.md only (find-and-replace). Does NOT accept HISTORY.md -- the `file` parameter was removed since HISTORY.md editing is never allowed. Blocked for admin bot targets
 - **correct_bot_history**: Append a `[CORRECTION]` entry to another bot's HISTORY.md. Used when a bot has incorrect information in its history that could pollute memory review. This preserves the append-only design -- existing entries are never modified, corrections are appended so the memory review process picks them up. For immediate fixes, the admin should also use `edit_bot_memory` to correct MEMORY.md directly

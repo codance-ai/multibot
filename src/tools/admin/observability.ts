@@ -6,7 +6,7 @@ import { tool } from "ai";
 import type { ToolSet } from "ai";
 import { z } from "zod";
 import * as configDb from "../../db/config";
-import { getMemory, upsertMemory, getHistoryEntries, insertHistoryEntry } from "../../db/d1";
+import { getMemory, upsertMemory, getHistoryEntries, insertHistoryEntry, searchHistoryEntries } from "../../db/d1";
 import type { AdminToolDeps } from "./utils";
 
 export function createObservabilityTools(deps: AdminToolDeps): ToolSet {
@@ -170,6 +170,42 @@ export function createObservabilityTools(deps: AdminToolDeps): ToolSet {
           return `Appended correction to HISTORY.md for **${bot.name}** (\`${botId}\`).`;
         } catch (err) {
           return `Failed to append correction: ${err instanceof Error ? err.message : String(err)}`;
+        }
+      },
+    }),
+
+    search_bot_memory: tool({
+      description:
+        "Search another bot's memory file for entries containing a keyword. Returns matching lines (MEMORY.md) or entries (HISTORY.md). Useful for finding specific information without reading the entire file.",
+      inputSchema: z.object({
+        botId: z.string().describe("Target bot ID"),
+        file: z
+          .enum(["MEMORY.md", "HISTORY.md"])
+          .describe("Which memory file to search"),
+        query: z.string().min(1).describe("The search keyword or phrase"),
+      }),
+      execute: async ({ botId, file, query }) => {
+        try {
+          const bot = await configDb.getBot(db, ownerId, botId);
+          if (!bot) return `Bot not found: ${botId}`;
+
+          if (file === "HISTORY.md") {
+            const results = await searchHistoryEntries(db, botId, query);
+            if (results.length === 0) return `No matches for "${query}" in HISTORY.md of **${bot.name}**.`;
+            return results.map((e) => e.content).join("\n\n");
+          }
+
+          // MEMORY.md: case-insensitive line-by-line search
+          const content = await getMemory(db, botId);
+          if (!content) return `No matches (MEMORY.md is empty for **${bot.name}**).`;
+          const lines = content.split("\n");
+          const matches = lines.filter((line) =>
+            line.toLowerCase().includes(query.toLowerCase())
+          );
+          if (matches.length === 0) return `No matches for "${query}" in MEMORY.md of **${bot.name}**.`;
+          return matches.join("\n");
+        } catch (err) {
+          return `Failed to search bot memory: ${err instanceof Error ? err.message : String(err)}`;
         }
       },
     }),
