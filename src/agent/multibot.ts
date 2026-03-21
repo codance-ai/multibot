@@ -800,7 +800,7 @@ export class MultibotAgent extends Agent<Env> {
 
         // Eager memory review: when token pressure is high, fast-track key facts
         // into long-term memory instead of waiting for the next cron cycle.
-        if (tokenTriggered) {
+        if (tokenTriggered && botConfig.botType !== "admin") {
           try {
             const reviewed = await reviewMemory({
               model, db: this.db, botId: botConfig.botId,

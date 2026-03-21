@@ -160,6 +160,9 @@ export default {
       try {
         const botConfig = await configDb.getBot(db, owner_id, bot_id);
         if (!botConfig) continue;
+        // Admin bot manages other bots — its history entries contain other bots'
+        // persona details which would pollute its own MEMORY.md. Skip review.
+        if (botConfig.botType === "admin") continue;
 
         const userKeys = await configDb.getUserKeys(db, owner_id);
         if (!userKeys) continue;

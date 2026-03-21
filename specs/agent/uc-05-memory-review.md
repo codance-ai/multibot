@@ -46,6 +46,7 @@ Cron fires memory review for bot "Alice"
 
 ## Edge Cases
 
+- **Admin bot excluded**: Admin bots (`botType === "admin"`) are skipped in both the cron review loop and the eager review path after high-pressure consolidation. Their conversations consist of bot management operations (editing other bots' config/memory), which would pollute their own MEMORY.md with other bots' persona details
 - **No history entries**: Returns `false` immediately — nothing to review
 - **Empty current memory**: Works fine — LLM creates memory from scratch based on history entries
 - **LLM produces empty output**: Returns `false` — no memory update
