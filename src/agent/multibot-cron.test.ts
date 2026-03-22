@@ -232,3 +232,115 @@ describe("executeCronJob voice delivery", () => {
     );
   });
 });
+
+describe("executeCronJob tz-cron re-scheduling", () => {
+  beforeEach(() => {
+    vi.restoreAllMocks();
+    vi.unstubAllGlobals();
+    mocked.createModel.mockReturnValue({});
+    mocked.getSkillSecretsForBot.mockResolvedValue({ flat: {}, perSkill: {} });
+    mocked.persistCronReplyToGroupSession.mockResolvedValue([]);
+    mocked.ensureSessionExists.mockResolvedValue(undefined);
+    mocked.persistUserMessage.mockResolvedValue(undefined);
+    mocked.persistMessages.mockResolvedValue(undefined);
+    mocked.runAgentLoop.mockResolvedValue({
+      reply: "Done",
+      toolResults: [],
+      newMessages: [],
+      model: "test-model",
+      iterations: 1,
+      inputTokens: 10,
+      outputTokens: 6,
+      skillCalls: [],
+    });
+    mocked.resolveAndNormalizeReply.mockResolvedValue({
+      normalizedText: "Done",
+      attachments: [],
+      media: [],
+    });
+  });
+
+  function makeTzPayload(): CronJobPayload {
+    return {
+      ...makePayload(),
+      cronExpr: "0 9 * * *",
+      tz: "Asia/Shanghai",
+      cronSessionId: "cron-tz-test",
+    };
+  }
+
+  it("re-schedules after successful execution", async () => {
+    const deps = makeDeps("off");
+    const log = createLogger({ botId: "bot-1", channel: "telegram", chatId: "chat-1" });
+    vi.spyOn(log, "flush").mockResolvedValue(undefined);
+
+    await executeCronJob(deps, makeTzPayload(), log);
+
+    expect(deps.schedule).toHaveBeenCalledOnce();
+    expect(deps.schedule).toHaveBeenCalledWith(
+      expect.any(Date),
+      "onCronJob",
+      expect.objectContaining({ cronExpr: "0 9 * * *", tz: "Asia/Shanghai" }),
+    );
+  });
+
+  it("re-schedules even when execution fails (finally block)", async () => {
+    mocked.runAgentLoop.mockRejectedValue(new Error("LLM call failed"));
+    const deps = makeDeps("off");
+    const log = createLogger({ botId: "bot-1", channel: "telegram", chatId: "chat-1" });
+    vi.spyOn(log, "flush").mockResolvedValue(undefined);
+
+    await executeCronJob(deps, makeTzPayload(), log);
+
+    // Chain must survive: schedule called despite execution error
+    expect(deps.schedule).toHaveBeenCalledOnce();
+    expect(deps.schedule).toHaveBeenCalledWith(
+      expect.any(Date),
+      "onCronJob",
+      expect.objectContaining({ cronExpr: "0 9 * * *", tz: "Asia/Shanghai" }),
+    );
+    // Error notification should still be sent
+    expect(deps.sendChannelMessage).toHaveBeenCalledWith(
+      "telegram", "payload-token", "chat-1",
+      expect.stringContaining("Scheduled task failed"),
+    );
+  });
+
+  it("does NOT re-schedule when bot is deleted (skipReschedule)", async () => {
+    const deps = makeDeps("off", {
+      loadBotConfigAndKeys: vi.fn().mockResolvedValue(null),
+      getSchedules: vi.fn().mockReturnValue([
+        { id: "s1", callback: "onCronJob" },
+      ]),
+    });
+    const log = createLogger({ botId: "bot-1", channel: "telegram", chatId: "chat-1" });
+
+    await executeCronJob(deps, makeTzPayload(), log);
+
+    // Orphaned schedules cleaned up
+    expect(deps.cancelSchedule).toHaveBeenCalledWith("s1");
+    // Must NOT re-schedule — bot is gone
+    expect(deps.schedule).not.toHaveBeenCalled();
+  });
+
+  it("does not re-schedule for non-tz cron payloads", async () => {
+    const deps = makeDeps("off");
+    const log = createLogger({ botId: "bot-1", channel: "telegram", chatId: "chat-1" });
+    vi.spyOn(log, "flush").mockResolvedValue(undefined);
+
+    await executeCronJob(deps, makePayload(), log);
+
+    expect(deps.schedule).not.toHaveBeenCalled();
+  });
+
+  it("isolates re-schedule errors from the main execution", async () => {
+    const deps = makeDeps("off", {
+      schedule: vi.fn().mockRejectedValue(new Error("schedule write failed")),
+    });
+    const log = createLogger({ botId: "bot-1", channel: "telegram", chatId: "chat-1" });
+    vi.spyOn(log, "flush").mockResolvedValue(undefined);
+
+    // Should NOT throw — inner try/catch in finally isolates the error
+    await expect(executeCronJob(deps, makeTzPayload(), log)).resolves.toBeUndefined();
+  });
+});
