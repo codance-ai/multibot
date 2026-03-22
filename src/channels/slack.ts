@@ -227,7 +227,7 @@ export class SlackAdapter implements ChannelAdapter {
             });
           }
           log.error("Slack sendMessage failed", { status: res.status, body: respBody });
-          return;
+          throw new Error(`Slack sendMessage failed: ${res.status} ${respBody}`);
         }
 
         let parsed: { ok?: boolean; error?: string } | undefined;
@@ -243,6 +243,7 @@ export class SlackAdapter implements ChannelAdapter {
             });
           }
           log.error("Slack API error", { error: errCode, body: respBody });
+          throw new Error(`Slack API error: ${errCode}`);
         }
       });
     }
