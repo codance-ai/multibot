@@ -385,12 +385,23 @@ export async function runAgentLoop(params: {
 }): Promise<LoopResult> {
   const { model, systemPrompt, userMessage, maxIterations } = params;
   const appendUserTurn = params.appendUserTurn ?? true;
+  // Safe wrapper for onProgress — best-effort, never throws.
+  // Used by both tool-hint sends and intermediate-text sends.
+  const safeOnProgress = params.onProgress
+    ? async (text: string) => {
+        try {
+          await params.onProgress!(text);
+        } catch (e) {
+          params.log?.warn("onProgress send failed", { error: String(e) });
+        }
+      }
+    : undefined;
   // Build onToolStart callback: sends hint to user when a tool begins executing
   // (inside generateText, before the tool runs — not after it completes).
-  const onToolStart = (params.onProgress && (params.sendToolHints ?? true))
+  const onToolStart = (safeOnProgress && (params.sendToolHints ?? true))
     ? async (toolName: string, input: unknown) => {
         const hint = formatToolHint([{ toolName, input }]);
-        await params.onProgress!(hint);
+        await safeOnProgress(hint);
       }
     : undefined;
   const toolTimings: ToolTimings = new Map();
@@ -517,8 +528,8 @@ export async function runAgentLoop(params: {
     // Text with tool calls but no onProgress: accumulate into reply (group chat)
     // Text without tool calls: accumulate into reply (final answer)
     if (result.text) {
-      if (result.toolCalls?.length && params.onProgress) {
-        await params.onProgress(result.text);
+      if (result.toolCalls?.length && safeOnProgress) {
+        await safeOnProgress(result.text);
       } else {
         accumulatedText = accumulatedText
           ? `${accumulatedText}\n\n${result.text}`
