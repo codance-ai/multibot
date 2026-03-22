@@ -58,19 +58,17 @@ describe("sendSlackMessage", () => {
     expect(chunks.join("")).toBe(longText);
   });
 
-  it("logs error but does not throw on 4xx API failure", async () => {
-    const consoleSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+  it("throws on non-retryable 4xx API failure", async () => {
+    vi.spyOn(console, "error").mockImplementation(() => {});
     mockFetch.mockResolvedValueOnce({
       ok: false,
       status: 403,
       text: async () => "Forbidden",
     });
 
-    await sendSlackMessage("tok", "C1", "Hi");
-
-    expect(consoleSpy).toHaveBeenCalledOnce();
-    expect(consoleSpy.mock.calls[0][0]).toContain("Slack sendMessage failed");
-    consoleSpy.mockRestore();
+    await expect(sendSlackMessage("tok", "C1", "Hi")).rejects.toThrow(
+      "Slack sendMessage failed"
+    );
   });
 
   it("retries on 5xx and succeeds", async () => {
@@ -556,19 +554,17 @@ describe("Slack API ok:false handling", () => {
     expect(mockFetch).toHaveBeenCalledTimes(2);
   }, 10000);
 
-  it("logs error on non-retryable Slack API error (ok:false)", async () => {
-    const consoleSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+  it("throws on non-retryable Slack API error (ok:false)", async () => {
+    vi.spyOn(console, "error").mockImplementation(() => {});
     mockFetch.mockResolvedValueOnce({
       ok: true,
       status: 200,
       text: async () => JSON.stringify({ ok: false, error: "channel_not_found" }),
     });
 
-    await sendSlackMessage("tok", "C1", "Hi");
-
-    expect(consoleSpy).toHaveBeenCalledOnce();
-    expect(consoleSpy.mock.calls[0][0]).toContain("Slack API error");
-    consoleSpy.mockRestore();
+    await expect(sendSlackMessage("tok", "C1", "Hi")).rejects.toThrow(
+      "Slack API error: channel_not_found"
+    );
   });
 
   it("passes through when Slack returns ok:true", async () => {

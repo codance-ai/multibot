@@ -160,6 +160,17 @@ describe("sendTelegramMessage", () => {
     expect(url).toContain("/sendMessage");
   });
 
+  it("throws when both Markdown and plain-text sends fail", async () => {
+    // Markdown send fails (400), plain-text fallback also fails (400)
+    mockFetch
+      .mockResolvedValueOnce({ ok: false, status: 400, text: async () => "Bad Request" })
+      .mockResolvedValueOnce({ ok: false, status: 400, text: async () => "Bad Request" });
+
+    await expect(sendTelegramMessage("tok", "chat-1", "Hello")).rejects.toThrow(
+      "Telegram sendMessage failed"
+    );
+  });
+
   it("splits long text messages into chunks", async () => {
     mockFetch.mockResolvedValue({ ok: true, text: async () => "" });
 

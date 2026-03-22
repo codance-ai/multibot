@@ -421,7 +421,12 @@ export class TelegramAdapter implements ChannelAdapter {
               text: chunk,
             }),
           });
-          await r.text();
+          const body = await r.text();
+          if (!r.ok) {
+            throw Object.assign(new Error(`Telegram sendMessage failed: ${r.status} ${body}`), {
+              status: r.status,
+            });
+          }
           return r;
         });
       }
