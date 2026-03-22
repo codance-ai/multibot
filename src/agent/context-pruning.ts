@@ -52,27 +52,25 @@ function extractToolResultText(output: unknown): string {
   return typeof output === "undefined" ? "" : JSON.stringify(output);
 }
 
-/** Estimate tokens for a single ModelMessage. */
+/** Estimate tokens for a single ModelMessage (CJK-aware). */
 function estimateMessageTokens(msg: ModelMessage): number {
   if (typeof msg.content === "string") return estimateTokens(msg.content);
   if (!Array.isArray(msg.content)) return 0;
 
-  let chars = 0;
+  let tokens = 0;
   for (const part of msg.content) {
     const p = part as Record<string, unknown>;
     if (p.type === "text") {
-      chars += (p.text as string).length;
+      tokens += estimateTokens(p.text as string);
     } else if (p.type === "tool-call") {
-      chars += JSON.stringify(p.input ?? p.args ?? {}).length + 20;
+      tokens += estimateTokens(JSON.stringify(p.input ?? p.args ?? {})) + 8;
     } else if (p.type === "tool-result") {
-      chars += extractToolResultText(p.output ?? p.result).length;
+      tokens += estimateTokens(extractToolResultText(p.output ?? p.result));
     } else if (p.type === "image" || p.type === "file") {
-      chars += 8000; // conservative estimate for binary content
+      tokens += 8000; // conservative estimate for binary content
     }
   }
-  // Compute directly from char count — avoids allocating a large string.
-  // Non-CJK estimate: ceil(chars / 3 * 1.2), matching estimateTokens heuristic.
-  return Math.ceil((chars / 3) * 1.2);
+  return tokens;
 }
 
 /** Estimate total tokens for all messages. */

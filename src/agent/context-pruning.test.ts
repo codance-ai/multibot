@@ -455,6 +455,35 @@ describe("pruneContextMessages", () => {
     expect(stats.softTrimmed).toBe(0);
   });
 
+  it("triggers pruning for CJK tool results with CJK-aware token estimation", () => {
+    // 3000 CJK chars ≈ 5400 tokens (CJK-aware), but only ≈ 1200 tokens with old non-CJK formula.
+    // With a 10000-token context window, CJK-aware estimate (5400/10000 = 54%) exceeds
+    // HARD_CLEAR_RATIO (0.5) and triggers hard-clear. The old formula (12%) would skip pruning entirely.
+    // Note: 3000 chars < SOFT_TRIM_MAX_CHARS (4000), so soft-trim is skipped; hard-clear fires.
+    const cjkResult = "你好世界测试".repeat(500); // 3000 CJK chars
+    const messages: ModelMessage[] = [
+      userMsg("开始"),
+      assistantWithToolCall("tc-1", "search"),
+      toolResult("tc-1", "search", cjkResult),
+      userMsg("继续"),
+      assistantWithToolCall("tc-2", "exec"),
+      toolResult("tc-2", "exec", "完成"),
+      userMsg("下一步"),
+      assistantWithToolCall("tc-3", "exec"),
+      toolResult("tc-3", "exec", "好的"),
+      userMsg("最后"),
+      assistantWithToolCall("tc-4", "exec"),
+      toolResult("tc-4", "exec", "结束"),
+    ];
+
+    const { stats } = pruneContextMessages(messages, { contextWindowTokens: 10000 });
+
+    // With CJK-aware estimation, the ratio should exceed SOFT_TRIM_RATIO (0.3)
+    // and trigger pruning. With the old formula it would stay under 0.3.
+    expect(stats.estimatedTokensBefore).toBeGreaterThan(10000 * SOFT_TRIM_RATIO);
+    expect(stats.softTrimmed + stats.hardCleared).toBeGreaterThan(0);
+  });
+
   it("handles Anthropic system message (role=system in messages array)", () => {
     // Anthropic system prompt is embedded as the first message in the array
     const messages: ModelMessage[] = [
