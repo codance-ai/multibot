@@ -52,11 +52,15 @@ export interface CronDeps {
 export async function executeCronJob(deps: CronDeps, payload: CronJobPayload, log: Logger): Promise<void> {
   const cronStartedAt = Date.now();
   let voiceSent = false;
+  // Skip re-scheduling when bot is deleted (early return cleans up orphaned schedules).
+  // Must be declared outside try so finally can read it.
+  let skipReschedule = false;
 
   try {
     // 1. Load BotConfig + UserKeys from D1
     const loaded = await deps.loadBotConfigAndKeys(payload.ownerId, payload.botId);
     if (!loaded) {
+      skipReschedule = true;
       const schedules = deps.getSchedules<CronJobPayload>()
         .filter((s) => s.callback === "onCronJob");
       log.warn("BotConfig not found for cron job, cleaning up orphaned schedules", {
@@ -252,27 +256,7 @@ export async function executeCronJob(deps: CronDeps, payload: CronJobPayload, lo
       }
     }
 
-    // 11. Re-schedule next occurrence for timezone-aware cron
-    if (payload.cronExpr && payload.tz) {
-      const nextDate = getNextCronDateInTimezone(payload.cronExpr, payload.tz);
-      if (nextDate) {
-        await deps.schedule(
-          nextDate,
-          "onCronJob",
-          {
-            ...payload,
-            // Keep the same cronSessionId for chained one-shots
-          }
-        );
-      } else {
-        log.error("Failed to compute next tz-cron date", {
-          cronExpr: payload.cronExpr,
-          tz: payload.tz,
-        });
-      }
-    }
-
-    // 12. Flush request trace to R2
+    // 11. Flush request trace to R2
     if (deps.env.LOG_BUCKET && log.requestId) {
       const trace: RequestTrace = {
         requestId: log.requestId,
@@ -328,6 +312,33 @@ export async function executeCronJob(deps: CronDeps, payload: CronJobPayload, lo
     } catch (e) {
       // Ignore notification errors
       console.warn("[cron] Failed to send error notification:", e);
+    }
+  } finally {
+    // Re-schedule next occurrence for timezone-aware cron.
+    // MUST be in finally: tz-cron uses chained one-shots — the Agents SDK deletes
+    // one-shot schedules after execution regardless of success/failure. If we only
+    // re-schedule inside try, a single execution error permanently breaks the chain.
+    if (!skipReschedule && payload.cronExpr && payload.tz) {
+      try {
+        const nextDate = getNextCronDateInTimezone(payload.cronExpr, payload.tz);
+        if (nextDate) {
+          await deps.schedule(
+            nextDate,
+            "onCronJob",
+            {
+              ...payload,
+              // Keep the same cronSessionId for chained one-shots
+            }
+          );
+        } else {
+          log.error("Failed to compute next tz-cron date", {
+            cronExpr: payload.cronExpr,
+            tz: payload.tz,
+          });
+        }
+      } catch (e) {
+        console.error("[cron] Failed to re-schedule tz-cron:", e);
+      }
     }
   }
 }
