@@ -6,3 +6,4 @@ wrangler.toml
 dashboard/node_modules/
 dashboard/dist/
 .claude/
+CLAUDE.md
