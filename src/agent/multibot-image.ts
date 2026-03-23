@@ -77,7 +77,7 @@ export async function resolveAndNormalizeReply(params: {
   if (newMessages.length > 0) {
     const lastAssistant = [...newMessages].reverse().find(m => m.role === "assistant");
     if (lastAssistant) {
-      lastAssistant.content = normalized.text;
+      lastAssistant.content = normalized.text || lastAssistant.content;
       lastAssistant.attachments = attachmentsToJson(normalized.attachments);
     }
   }
@@ -93,6 +93,8 @@ export async function resolveAndNormalizeReply(params: {
     },
   }));
 
+  // Return normalized.text (not the preserved content) so callers don't re-send
+  // text that was already streamed via onProgress in the same iteration.
   return {
     normalizedText: normalized.text,
     attachments: normalized.attachments,
