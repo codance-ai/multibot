@@ -104,10 +104,16 @@ export async function handleUpdateBot(
     return errorResponse(parsed.error.message, 400);
   }
 
-  // Merge, but botId, ownerId, and botType are immutable
+  // Merge only fields explicitly present in the request body.
+  // Zod v4's .partial() fills missing defaulted fields with their defaults instead of
+  // undefined, so a naive spread would silently overwrite existing values.
+  const explicitUpdates = Object.fromEntries(
+    Object.entries(parsed.data).filter(([key]) => key in (body as Record<string, unknown>)),
+  );
+  // botId, ownerId, and botType are immutable
   const updated: BotConfig = {
     ...existing,
-    ...parsed.data,
+    ...explicitUpdates,
     botId: existing.botId,
     ownerId: existing.ownerId,
     botType: existing.botType,
