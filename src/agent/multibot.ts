@@ -596,32 +596,16 @@ export class MultibotAgent extends Agent<Env> {
   }
 
   /**
-   * Workaround for workerd issue #2240: when a DO cold-starts from an alarm,
-   * this.name may not be hydrated, causing the Agents SDK's onStart to crash
-   * with "Attempting to read .name on MultibotAgent before it was set."
-   * Pre-hydrate the name from DO storage before super.alarm() triggers onStart.
+   * Guard against orphaned DOs: if __ps_name was never written, this DO has no
+   * identity and cannot initialise — drop the alarm silently instead of crashing.
+   * The previous name-hydration workaround (workerd#2240) is no longer needed
+   * since partyserver ≥ 0.3.3 handles it in #ensureInitialized().
    */
   async alarm(): Promise<void> {
-    // this.name throws if #_name is unset (partyserver workerd#2240).
-    // There is no public API to check readiness without triggering a throw.
-    try {
-      this.name;
-    } catch {
-      try {
-        // "__ps_name" = NAME_STORAGE_KEY in partyserver/dist/index.js
-        const storedName = await this.ctx.storage.get<string>("__ps_name");
-        if (storedName) {
-          await this.setName(storedName);
-        } else {
-          console.warn("[alarm] __ps_name not found in storage -- orphaned DO, dropping alarm");
-          return;
-        }
-      } catch (e) {
-        // setName calls #ensureInitialized() -> onStart(), which may throw for other reasons.
-        // Swallow here so super.alarm() gets a chance to retry initialization (partyserver
-        // resets #status to "zero" on failure, so #ensureInitialized will re-run onStart).
-        console.warn("[alarm] Failed to pre-hydrate name:", e);
-      }
+    const storedName = await this.ctx.storage.get<string>("__ps_name");
+    if (!storedName) {
+      console.warn("[alarm] __ps_name not found in storage -- orphaned DO, dropping alarm");
+      return;
     }
     return super.alarm();
   }

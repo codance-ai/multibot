@@ -197,9 +197,13 @@ export async function handleUpdateGroup(
     }
   }
 
+  // Merge only fields explicitly present in the request body (see bots.ts for rationale).
+  const explicitUpdates = Object.fromEntries(
+    Object.entries(parsed.data).filter(([key]) => key in (body as Record<string, unknown>)),
+  );
   const updated: GroupConfig = {
     ...existing,
-    ...parsed.data,
+    ...explicitUpdates,
     groupId: existing.groupId,
     ownerId: existing.ownerId,
   };
