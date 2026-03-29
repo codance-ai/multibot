@@ -501,3 +501,101 @@ describe("buildPromptAndHistory - token budget trimming", () => {
     expect(result.conversationHistory.length).toBe(2);
   });
 });
+
+describe("buildPromptAndHistory - turn-boundary alignment", () => {
+  it("drops leading assistant(TC) rows so history starts with user", async () => {
+    const toolCalls = JSON.stringify([
+      { toolCallId: "tc-1", toolName: "exec", input: {}, result: "ok" },
+    ]);
+    // DESC order (newest first): simulates LIMIT clipping at an assistant(TC) row
+    const db = mockDb([
+      { role: "assistant", content: "response" },
+      { role: "user", content: "second msg" },
+      { role: "assistant", content: "first response" },
+      { role: "assistant", content: null, tool_calls: toolCalls }, // ← would be first after reverse
+    ]);
+    const { conversationHistory, tokenUsage } = await buildPromptAndHistory({
+      db, botConfig: makeBotConfig(), sessionId: "s1",
+      channel: "telegram", chatId: "c1",
+    });
+
+    // Leading assistant(TC) + assistant(text) should be dropped
+    // Remaining: user, assistant(text)
+    expect(conversationHistory).toHaveLength(2);
+    expect(conversationHistory[0].role).toBe("user");
+    expect(conversationHistory[1].role).toBe("assistant");
+    expect(tokenUsage.trimmedCount).toBeGreaterThan(0);
+  });
+
+  it("drops leading plain assistant row so history starts with user", async () => {
+    // DESC order
+    const db = mockDb([
+      { role: "assistant", content: "response" },
+      { role: "user", content: "msg" },
+      { role: "assistant", content: "orphan text" }, // ← first after reverse, not user
+    ]);
+    const { conversationHistory } = await buildPromptAndHistory({
+      db, botConfig: makeBotConfig(), sessionId: "s1",
+      channel: "telegram", chatId: "c1",
+    });
+
+    expect(conversationHistory[0].role).toBe("user");
+  });
+
+  it("preserves subagent row at start (reconstructed as user)", async () => {
+    // DESC order
+    const db = mockDb([
+      { role: "assistant", content: "response" },
+      { role: "subagent", content: "sub result" }, // ← first after reverse, user-like
+    ]);
+    const { conversationHistory } = await buildPromptAndHistory({
+      db, botConfig: makeBotConfig(), sessionId: "s1",
+      channel: "telegram", chatId: "c1",
+    });
+
+    // subagent → user, so should be preserved
+    expect(conversationHistory[0].role).toBe("user");
+    expect(conversationHistory).toHaveLength(2);
+  });
+
+  it("preserves foreign bot assistant row in group chat (reconstructed as user)", async () => {
+    // DESC order: foreign bot's assistant message is first after reverse
+    const db = mockDb([
+      { role: "assistant", content: "my response", bot_id: "bot1" },
+      { role: "assistant", content: "other bot said hi", bot_id: "other-bot" }, // ← foreign bot, user-like in group
+    ]);
+    const groupContext = {
+      groupId: "g1",
+      groupName: "test",
+      userName: "tester",
+      note: "",
+      round: 1,
+      members: [
+        { botId: "bot1", botName: "TestBot" },
+        { botId: "other-bot", botName: "OtherBot" },
+      ],
+    };
+    const { conversationHistory } = await buildPromptAndHistory({
+      db, botConfig: makeBotConfig(), sessionId: "s1",
+      channel: "telegram", chatId: "c1",
+      groupContext,
+    });
+
+    // Foreign bot → user role, should be preserved
+    expect(conversationHistory[0].role).toBe("user");
+    expect(conversationHistory).toHaveLength(2);
+  });
+
+  it("handles all rows being assistant (drops all, empty history)", async () => {
+    const db = mockDb([
+      { role: "assistant", content: "b" },
+      { role: "assistant", content: "a" },
+    ]);
+    const { conversationHistory } = await buildPromptAndHistory({
+      db, botConfig: makeBotConfig(), sessionId: "s1",
+      channel: "telegram", chatId: "c1",
+    });
+
+    expect(conversationHistory).toHaveLength(0);
+  });
+});

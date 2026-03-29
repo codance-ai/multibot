@@ -277,6 +277,34 @@ export async function buildPromptAndHistory(params: {
     }
   }
 
+  // --- Turn-boundary alignment ---
+  // Ensure history starts at a "user-like" row. Providers like Gemini require strict
+  // turn ordering and reject conversations that open with a model/function_call turn.
+  // A row is user-like if it will reconstruct to role: "user":
+  //   - role "user" or "subagent" (subagent → user in reconstruction)
+  //   - assistant row from a DIFFERENT bot in group chat (→ user via <group_reply>)
+  const startLen = rows.length;
+  while (rows.length > 0) {
+    const first = rows[0];
+    if (first.role === "user" || first.role === "subagent") break;
+    // In group chat, assistant rows from OTHER bots reconstruct to user role.
+    // bot_id is always set by persistMessages for assistant rows; null means own bot.
+    if (
+      first.role === "assistant" &&
+      groupContext &&
+      first.bot_id &&
+      first.bot_id !== botConfig.botId
+    ) {
+      break;
+    }
+    rows.shift();
+  }
+  const boundaryTrimmed = startLen - rows.length;
+  if (boundaryTrimmed > 0) {
+    trimmedCount += boundaryTrimmed;
+    console.warn(`[build] Turn-boundary alignment: dropped ${boundaryTrimmed} leading non-user messages`);
+  }
+
   const historyTokens = rows.reduce((sum, row, idx) => {
     const isRecent = idx >= rows.length - RECENT_COUNT;
     return sum + estimateRowTokens(row, isRecent);
