@@ -188,12 +188,14 @@ else
 fi
 
 # Set lifecycle rules for R2 buckets
-npx wrangler r2 bucket lifecycle add multibot-logs expire-90d --expire-days 90 --force 2>/dev/null && \
-  ok "R2 lifecycle rule set for logs (90-day expiry)." || \
+# Note: We intentionally do NOT add InfrequentAccess transitions — for small-data
+# buckets the Class A operation costs from migration exceed the storage savings.
+npx wrangler r2 bucket lifecycle add multibot-logs expire-90d --expire-days 90 --abort-multipart-days 7 --force 2>/dev/null && \
+  ok "R2 lifecycle rule set for logs (90-day expiry + 7-day multipart abort)." || \
   warn "Could not set lifecycle rule for logs (may already exist)."
 
-npx wrangler r2 bucket lifecycle add multibot-assets expire-90d --expire-days 90 --force 2>/dev/null && \
-  ok "R2 lifecycle rule set for assets (90-day expiry)." || \
+npx wrangler r2 bucket lifecycle add multibot-assets expire-90d --expire-days 90 --abort-multipart-days 7 --force 2>/dev/null && \
+  ok "R2 lifecycle rule set for assets (90-day expiry + 7-day multipart abort)." || \
   warn "Could not set lifecycle rule for assets (may already exist)."
 
 # Derive Worker URL for BASE_URL
