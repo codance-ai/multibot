@@ -1152,4 +1152,41 @@ describe("runAgentLoop", () => {
     expect(result.skillCalls).toEqual([]);
     expect(result.reply).toBe("Hello!");
   });
+
+  it("retries with a system notice when provider content-filter produces an empty reply", async () => {
+    mockGenerateText
+      .mockResolvedValueOnce(mockResult({
+        text: "",
+        finishReason: "content-filter",
+      }) as any)
+      .mockResolvedValueOnce(mockResult({
+        text: "抱歉，刚才那条被拦截了，换个说法再试试。",
+        finishReason: "end-turn",
+      }) as any);
+
+    const result = await runAgentLoop(baseParams);
+    expect(mockGenerateText).toHaveBeenCalledTimes(2);
+    expect(result.reply).toBe("抱歉，刚才那条被拦截了，换个说法再试试。");
+    expect(result.iterations).toBe(2);
+    const retryCall = mockGenerateText.mock.calls[1][0] as { messages: ModelMessage[] };
+    const lastMsg = retryCall.messages[retryCall.messages.length - 1];
+    expect(lastMsg.role).toBe("user");
+    expect(String(lastMsg.content)).toContain("content filter");
+  });
+
+  it("does not retry more than once if content-filter repeats", async () => {
+    mockGenerateText
+      .mockResolvedValueOnce(mockResult({
+        text: "",
+        finishReason: "content-filter",
+      }) as any)
+      .mockResolvedValueOnce(mockResult({
+        text: "",
+        finishReason: "content-filter",
+      }) as any);
+
+    const result = await runAgentLoop(baseParams);
+    expect(mockGenerateText).toHaveBeenCalledTimes(2);
+    expect(result.reply).toBe("");
+  });
 });
