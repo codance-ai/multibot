@@ -451,6 +451,8 @@ export async function runAgentLoop(params: {
   let lastModel: string | undefined;
   let currentSkill = "";
   const skillCallsMap = new Map<string, SkillToolCall[]>();
+  // Guard: only retry once after provider content-filter, to avoid loops
+  let contentFilterRetried = false;
 
   const { log } = params;
 
@@ -616,6 +618,32 @@ export async function runAgentLoop(params: {
 
     // Clear timings unconditionally — they've been consumed by Tool calls + LLM response logs
     toolTimings.clear();
+
+    // Provider content filter produced an empty reply.
+    // Mirror the image-tool-error pattern: feed the event back as a system
+    // notice and let the LLM generate a natural, language-appropriate reply
+    // on the next iteration. Capped to one retry to prevent loops.
+    if (
+      result.finishReason === "content-filter" &&
+      !accumulatedText.trim() &&
+      !contentFilterRetried
+    ) {
+      contentFilterRetried = true;
+      log?.warn("Provider content-filter hit, retrying with system notice", {
+        iteration: iterations,
+      });
+      // Roll back the empty filtered response from persistence and LLM context
+      // so D1 does not accumulate null-content assistant rows and the retry
+      // sees a clean turn ending at the user's original message.
+      allNewMessages.length -= newMessages.length;
+      messages.length -= result.response.messages.length;
+      messages.push({
+        role: "user",
+        content:
+          "[System notice: Your previous reply was blocked by the model provider's content filter and was not delivered to the user. Briefly acknowledge this to the user in the same language they are using and suggest they rephrase. Do NOT attempt to reproduce the blocked content.]",
+      });
+      continue;
+    }
 
     // If no more tool calls, we have the final answer
     if (result.finishReason !== "tool-calls") {
