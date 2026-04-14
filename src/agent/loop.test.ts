@@ -1160,13 +1160,13 @@ describe("runAgentLoop", () => {
         finishReason: "content-filter",
       }) as any)
       .mockResolvedValueOnce(mockResult({
-        text: "抱歉，刚才那条被拦截了，换个说法再试试。",
+        text: "Sorry, that reply was blocked. Could you rephrase?",
         finishReason: "end-turn",
       }) as any);
 
     const result = await runAgentLoop(baseParams);
     expect(mockGenerateText).toHaveBeenCalledTimes(2);
-    expect(result.reply).toBe("抱歉，刚才那条被拦截了，换个说法再试试。");
+    expect(result.reply).toBe("Sorry, that reply was blocked. Could you rephrase?");
     expect(result.iterations).toBe(2);
     const retryCall = mockGenerateText.mock.calls[1][0] as { messages: ModelMessage[] };
     const lastMsg = retryCall.messages[retryCall.messages.length - 1];
