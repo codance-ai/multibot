@@ -1158,20 +1158,29 @@ describe("runAgentLoop", () => {
       .mockResolvedValueOnce(mockResult({
         text: "",
         finishReason: "content-filter",
+        messages: [{ role: "assistant", content: "" } as ModelMessage],
       }) as any)
       .mockResolvedValueOnce(mockResult({
         text: "Sorry, that reply was blocked. Could you rephrase?",
         finishReason: "end-turn",
+        messages: [{ role: "assistant", content: "Sorry, that reply was blocked. Could you rephrase?" } as ModelMessage],
       }) as any);
 
     const result = await runAgentLoop(baseParams);
     expect(mockGenerateText).toHaveBeenCalledTimes(2);
     expect(result.reply).toBe("Sorry, that reply was blocked. Could you rephrase?");
     expect(result.iterations).toBe(2);
+    // Retry call must include the synthetic system-notice user message.
+    // (Vitest records arg references, so we scan rather than peek at length-1.)
     const retryCall = mockGenerateText.mock.calls[1][0] as { messages: ModelMessage[] };
-    const lastMsg = retryCall.messages[retryCall.messages.length - 1];
-    expect(lastMsg.role).toBe("user");
-    expect(String(lastMsg.content)).toContain("content filter");
+    const hasNotice = retryCall.messages.some(
+      m => m.role === "user" && typeof m.content === "string" && m.content.includes("content filter")
+    );
+    expect(hasNotice).toBe(true);
+    // Filtered empty-assistant turn must not leak into persisted history
+    const assistants = result.newMessages.filter(m => m.role === "assistant");
+    expect(assistants).toHaveLength(1);
+    expect(assistants[0].content).toBe("Sorry, that reply was blocked. Could you rephrase?");
   });
 
   it("does not retry more than once if content-filter repeats", async () => {

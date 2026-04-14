@@ -632,6 +632,11 @@ export async function runAgentLoop(params: {
       log?.warn("Provider content-filter hit, retrying with system notice", {
         iteration: iterations,
       });
+      // Roll back the empty filtered response from persistence and LLM context
+      // so D1 does not accumulate null-content assistant rows and the retry
+      // sees a clean turn ending at the user's original message.
+      allNewMessages.length -= newMessages.length;
+      messages.length -= result.response.messages.length;
       messages.push({
         role: "user",
         content:
